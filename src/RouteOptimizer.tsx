@@ -1,48 +1,17 @@
 import React, { useState } from 'react';
-import { GoogleMap, useJsApiLoader, Marker, Polyline, InfoWindow } from '@react-google-maps/api';
-
-interface Location {
-  latitude: number;
-  longitude: number;
-}
-
-interface OptimizedRoute {
-  vehicleLabel: string;
-  visits: Array<{
-    shipmentIndex: number;
-    shipmentLabel: string;
-    startTime: string | { seconds: number };
-    arrivalLocation?: Location;
-  }>;
-  metrics: {
-    travelDuration: string | { seconds: number };
-    travelDistance: number;
-  };
-}
+import { useJsApiLoader } from '@react-google-maps/api';
+import type { Location, OptimizedRoute } from './types/route';
+import { RouteMap } from './components/RouteMap';
+import { RouteDetails } from './components/RouteDetails';
 
 const RouteOptimizer: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [optimizedRoutes, setOptimizedRoutes] = useState<OptimizedRoute[]>([]);
   const [error, setError] = useState<string>('');
-  const [selectedMarker, setSelectedMarker] = useState<number | null>(null);
-
   const [vehicleLocation, setVehicleLocation] = useState<Location | null>(null);
-
-  // Map settings
-  const mapContainerStyle = {
-    width: '100%',
-    height: '500px',
-    borderRadius: '8px',
-  };
-
-  const defaultCenter = {
-    lat: 37.7749,
-    lng: -122.4194,
-  };
 
   const googleMapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
-  // ✅ FIX: Use useJsApiLoader instead of LoadScript
   const { isLoaded, loadError } = useJsApiLoader({
     googleMapsApiKey: googleMapsApiKey || '',
   });
@@ -145,82 +114,6 @@ const RouteOptimizer: React.FC = () => {
     }
   };
 
-  const formatDuration = (duration: string | { seconds: number } | any) => {
-    if (duration && typeof duration === 'object' && 'seconds' in duration) {
-      const seconds = duration.seconds;
-      const minutes = Math.floor(seconds / 60);
-      const remainingSeconds = seconds % 60;
-      if (minutes > 0) {
-        return `${minutes}m ${remainingSeconds}s`;
-      }
-      return `${seconds}s`;
-    }
-    
-    if (typeof duration === 'string') {
-      const match = duration.match(/(\d+)s/);
-      if (match) {
-        const seconds = parseInt(match[1]);
-        const minutes = Math.floor(seconds / 60);
-        const remainingSeconds = seconds % 60;
-        if (minutes > 0) {
-          return `${minutes}m ${remainingSeconds}s`;
-        }
-        return `${seconds}s`;
-      }
-      return duration;
-    }
-    
-    return '0s';
-  };
-
-  const formatTime = (timestamp: string | { seconds: number } | any) => {
-    try {
-      if (timestamp && typeof timestamp === 'object' && 'seconds' in timestamp) {
-        const date = new Date(timestamp.seconds * 1000);
-        return date.toLocaleTimeString();
-      }
-      
-      if (typeof timestamp === 'string') {
-        const date = new Date(timestamp);
-        if (!isNaN(date.getTime())) {
-          return date.toLocaleTimeString();
-        }
-      }
-      
-      return '';
-    } catch (error) {
-      console.error('Error formatting time:', error);
-      return '';
-    }
-  };
-
-  const getRoutePath = () => {
-    if (optimizedRoutes.length === 0) return [];
-    
-    const route = optimizedRoutes[0];
-    const path = [];
-
-    if (vehicleLocation) {
-      path.push({ lat: vehicleLocation.latitude, lng: vehicleLocation.longitude });
-    }
-
-    route.visits.forEach(visit => {
-      if (visit.arrivalLocation) {
-        path.push({
-          lat: visit.arrivalLocation.latitude,
-          lng: visit.arrivalLocation.longitude,
-        });
-      }
-    });
-
-    if (vehicleLocation) {
-      path.push({ lat: vehicleLocation.latitude, lng: vehicleLocation.longitude });
-    }
-
-    return path;
-  };
-
-  // ✅ Handle map loading errors
   if (loadError) {
     return (
       <div style={{ padding: '20px' }}>
@@ -296,76 +189,12 @@ const RouteOptimizer: React.FC = () => {
         </div>
       )}
 
-      {/* Map Section - Only render when loaded */}
+      {/* Map Section */}
       {optimizedRoutes.length > 0 && googleMapsApiKey && isLoaded && (
-        <div style={{ marginBottom: '30px' }}>
-          <h2>🗺️ Route Map</h2>
-          <GoogleMap
-            mapContainerStyle={mapContainerStyle}
-            center={defaultCenter}
-            zoom={11}
-          >
-            {/* Vehicle Start Marker */}
-            {vehicleLocation && (
-              <Marker
-                position={{ lat: vehicleLocation.latitude, lng: vehicleLocation.longitude }}
-                label={{
-                  text: '🚚',
-                  fontSize: '20px',
-                }}
-                title="Vehicle Start/End"
-              />
-            )}
-
-            {/* Delivery Location Markers */}
-            {optimizedRoutes[0]?.visits.map((visit, index) => {
-              if (!visit.arrivalLocation) return null;
-              
-              return (
-                <Marker
-                  key={index}
-                  position={{
-                    lat: visit.arrivalLocation.latitude,
-                    lng: visit.arrivalLocation.longitude,
-                  }}
-                  label={{
-                    text: `${index + 1}`,
-                    color: 'white',
-                    fontWeight: 'bold',
-                  }}
-                  onClick={() => setSelectedMarker(index)}
-                >
-                  {selectedMarker === index && (
-                    <InfoWindow onCloseClick={() => setSelectedMarker(null)}>
-                      <div>
-                        <strong>Stop {index + 1}</strong>
-                        <p style={{ margin: '5px 0' }}>{visit.shipmentLabel}</p>
-                        {formatTime(visit.startTime) && (
-                          <p style={{ margin: '5px 0', fontSize: '12px', color: '#666' }}>
-                            Arrival: {formatTime(visit.startTime)}
-                          </p>
-                        )}
-                      </div>
-                    </InfoWindow>
-                  )}
-                </Marker>
-              );
-            })}
-
-            {/* Route Polyline */}
-            <Polyline
-              path={getRoutePath()}
-              options={{
-                strokeColor: '#4285f4',
-                strokeOpacity: 0.8,
-                strokeWeight: 4,
-              }}
-            />
-          </GoogleMap>
-        </div>
+        <RouteMap route={optimizedRoutes[0]} vehicleLocation={vehicleLocation} />
       )}
 
-      {/* Show loading state for map */}
+      {/* Map Loading State */}
       {optimizedRoutes.length > 0 && googleMapsApiKey && !isLoaded && (
         <div style={{ 
           padding: '40px', 
@@ -378,61 +207,10 @@ const RouteOptimizer: React.FC = () => {
         </div>
       )}
 
-      {/* Route Details Section */}
-      {optimizedRoutes.length > 0 && (
-        <div>
-          <h2>✅ Route Details</h2>
-          {optimizedRoutes.map((route, index) => (
-            <div
-              key={index}
-              style={{
-                border: '2px solid #4caf50',
-                borderRadius: '8px',
-                padding: '20px',
-                marginBottom: '20px',
-                backgroundColor: '#f1f8f4',
-              }}
-            >
-              <h3 style={{ marginTop: 0, color: '#2e7d32' }}>
-                🚚 {route.vehicleLabel}
-              </h3>
-              
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '15px' }}>
-                <div>
-                  <strong>📏 Total Distance:</strong>
-                  <div style={{ fontSize: '20px', color: '#1976d2', marginTop: '5px' }}>
-                    {(route.metrics.travelDistance / 1000).toFixed(2)} km
-                  </div>
-                </div>
-                <div>
-                  <strong>⏱️ Total Duration:</strong>
-                  <div style={{ fontSize: '20px', color: '#1976d2', marginTop: '5px' }}>
-                    {formatDuration(route.metrics.travelDuration)}
-                  </div>
-                </div>
-              </div>
-              
-              <h4>📍 Optimized Stop Sequence:</h4>
-              <ol style={{ lineHeight: '1.8', paddingLeft: '24px' }}>
-                {route.visits.map((visit, i) => {
-                  const formattedTime = formatTime(visit.startTime);
-                  return (
-                    <li key={i} style={{ marginBottom: '8px' }}>
-                      <strong>{visit.shipmentLabel}</strong>
-                      {formattedTime && (
-                        <span style={{ color: '#666', marginLeft: '10px' }}>
-                          🕐 {formattedTime}
-                        </span>
-                      )}
-                    </li>
-                  );
-                })}
-              </ol>
-            </div>
-          ))}
-        </div>
-      )}
+      {/* Route Details */}
+      <RouteDetails routes={optimizedRoutes} />
 
+      {/* Empty State */}
       {!loading && !error && optimizedRoutes.length === 0 && (
         <div style={{ 
           textAlign: 'center', 
