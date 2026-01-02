@@ -8,7 +8,7 @@ const RouteOptimizer: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [optimizedRoutes, setOptimizedRoutes] = useState<OptimizedRoute[]>([]);
   const [error, setError] = useState<string>('');
-  const [vehicleLocation, setVehicleLocation] = useState<Location | null>(null);
+  const [vehicleLocations, setVehicleLocations] = useState<Location[]>([]);
 
   const googleMapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
@@ -20,45 +20,65 @@ const RouteOptimizer: React.FC = () => {
     setLoading(true);
     setError('');
 
-    const shipments = [
-      {
-        deliveries: [
-          {
-            arrivalLocation: { latitude: 37.7749, longitude: -122.4194 },
-            duration: { seconds: 300 },
-          },
-        ],
-        label: 'San Francisco',
-      },
-      {
-        deliveries: [
-          {
-            arrivalLocation: { latitude: 37.8044, longitude: -122.2712 },
-            duration: { seconds: 300 },
-          },
-        ],
-        label: 'Oakland',
-      },
-      {
-        deliveries: [
-          {
-            arrivalLocation: { latitude: 37.6879, longitude: -122.4702 },
-            duration: { seconds: 300 },
-          },
-        ],
-        label: 'Daly City',
-      },
-    ];
+    // Import location generator utilities
+    const { 
+      generateMultipleLocations, 
+      generateRandomLondonLocation,
+      getShiftTimeWindow,
+      getLunchBreakConstraint 
+    } = await import('./utils/locationGenerator');
 
-    const vehicles = [
-      {
-        startLocation: { latitude: 37.7937, longitude: -122.3965 },
-        endLocation: { latitude: 37.7937, longitude: -122.3965 },
-        label: 'Vehicle 1',
-      },
-    ];
+    // Generate 100 random delivery locations in London
+    const deliveryLocations = generateMultipleLocations(100);
+    
+    const shipments = deliveryLocations.map((location, index) => ({
+      deliveries: [
+        {
+          arrivalLocation: { 
+            latitude: location.latitude, 
+            longitude: location.longitude 
+          },
+          duration: { seconds: 300 }, // 5 minutes per delivery
+          timeWindows: [getShiftTimeWindow()], // Must be delivered during shift
+        },
+      ],
+      label: location.postcode,
+    }));
 
-    setVehicleLocation(vehicles[0].startLocation);
+    // Generate 6 vehicles with random London start/end locations
+    const numVehicles = 6;
+    const vehicleLocations = Array.from({ length: numVehicles }, () => 
+      generateRandomLondonLocation()
+    );
+
+    const shiftTimeWindow = getShiftTimeWindow();
+    const lunchBreak = getLunchBreakConstraint();
+
+    const vehicles = vehicleLocations.map((location, index) => ({
+      startLocation: { 
+        latitude: location.latitude, 
+        longitude: location.longitude 
+      },
+      endLocation: { 
+        latitude: location.latitude, 
+        longitude: location.longitude 
+      },
+      label: `Vehicle ${index + 1} (${location.postcode})`,
+      startTimeWindows: [shiftTimeWindow], // Shift starts at 9am
+      endTimeWindows: [shiftTimeWindow], // Shift ends at 5pm
+      breakRule: {
+        breakRequests: [
+          {
+            earliestStartTime: lunchBreak.startTime,
+            latestStartTime: { seconds: lunchBreak.startTime.seconds + 3600 }, // Lunch between 12pm-1pm
+            minDuration: lunchBreak.duration,
+          },
+        ],
+      },
+    }));
+
+    // Store first vehicle location for map centering
+    setVehicleLocations(vehicles.map(v => v.startLocation));
 
     const requestBody = {
       model: {
@@ -152,7 +172,11 @@ const RouteOptimizer: React.FC = () => {
 
       <div style={{ marginBottom: '20px', padding: '15px', backgroundColor: '#e3f2fd', borderRadius: '8px' }}>
         <p style={{ margin: 0 }}>
-          <strong>Test Route:</strong> 3 Bay Area deliveries starting from Berkeley
+          <strong>Test Scenario:</strong> 100 random London deliveries across 6 vehicles
+          <br />
+          <small style={{ color: '#666' }}>
+            • 8-hour shift (9am-5pm) • 45-minute lunch break • 5 minutes per delivery
+          </small>
         </p>
       </div>
 
@@ -191,7 +215,7 @@ const RouteOptimizer: React.FC = () => {
 
       {/* Map Section */}
       {optimizedRoutes.length > 0 && googleMapsApiKey && isLoaded && (
-        <RouteMap route={optimizedRoutes[0]} vehicleLocation={vehicleLocation} />
+        <RouteMap routes={optimizedRoutes} vehicleLocations={vehicleLocations} />
       )}
 
       {/* Map Loading State */}
