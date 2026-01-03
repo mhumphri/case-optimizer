@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { PriorityChange } from '../types/route';
 
 interface ChangesPanelProps {
@@ -28,25 +28,43 @@ export const ChangesPanel: React.FC<ChangesPanelProps> = ({
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
 
-  if (changes.length === 0) return null;
+  // Auto-collapse when recalculation starts
+  useEffect(() => {
+    if (isRecalculating) {
+      setIsExpanded(false);
+    }
+  }, [isRecalculating]);
+
+  // Show panel if there are changes OR if recalculating
+  if (changes.length === 0 && !isRecalculating) return null;
 
   return (
     <div className="border-t border-gray-300 bg-white shrink-0">
       {/* Changes Summary Row */}
       <div className="px-3 py-2 flex justify-between items-center border-b border-gray-200">
         <span className="text-sm font-medium text-gray-700">
-          {changes.length} change{changes.length !== 1 ? 's' : ''}
+          {isRecalculating && changes.length === 0 
+            ? 'Recalculating...' 
+            : `${changes.length} change${changes.length !== 1 ? 's' : ''}`
+          }
         </span>
-        <button
-          onClick={() => setIsExpanded(!isExpanded)}
-          className="px-3 py-1 text-xs font-medium bg-gray-100 text-gray-700 border border-gray-300 rounded cursor-pointer hover:bg-gray-200"
-        >
-          {isExpanded ? '▼ Hide Changes' : '▶ View Changes'}
-        </button>
+        {changes.length > 0 && (
+          <button
+            onClick={() => setIsExpanded(!isExpanded)}
+            disabled={isRecalculating}
+            className={`px-3 py-1 text-xs font-medium border border-gray-300 rounded cursor-pointer ${
+              isRecalculating 
+                ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+          >
+            {isExpanded ? '▼ Hide Changes' : '▶ View Changes'}
+          </button>
+        )}
       </div>
 
       {/* Expandable Changes List */}
-      {isExpanded && (
+      {isExpanded && changes.length > 0 && (
         <div className="max-h-[200px] overflow-y-auto border-b border-gray-200">
           <div className="p-3">
             {changes.map((change, index) => (
@@ -75,8 +93,13 @@ export const ChangesPanel: React.FC<ChangesPanelProps> = ({
                 {/* Delete Button */}
                 <button
                   onClick={() => onDeleteChange(change.caseId)}
-                  className="shrink-0 p-1.5 text-gray-500 hover:text-red-600 hover:bg-red-50 rounded cursor-pointer border-none bg-transparent transition-colors"
-                  title="Restore original priority"
+                  disabled={isRecalculating}
+                  className={`shrink-0 p-1.5 rounded border-none transition-colors ${
+                    isRecalculating
+                      ? 'text-gray-300 cursor-not-allowed bg-transparent'
+                      : 'text-gray-500 hover:text-red-600 hover:bg-red-50 cursor-pointer bg-transparent'
+                  }`}
+                  title={isRecalculating ? 'Cannot delete while recalculating' : 'Restore original priority'}
                 >
                   🗑️
                 </button>

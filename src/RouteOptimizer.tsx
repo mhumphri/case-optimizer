@@ -83,11 +83,16 @@ const RouteOptimizer: React.FC = () => {
   };
 
   const handleRecalculate = async () => {
-    // Clear changes list
-    setPriorityChanges([]);
-    
-    // Re-run optimization with current case priorities
-    await optimizeRoutes(cases);
+    try {
+      // Re-run optimization with current case priorities
+      await optimizeRoutes(cases);
+      
+      // Clear changes list only after successful recalculation
+      setPriorityChanges([]);
+    } catch (error) {
+      // Keep changes visible if recalculation fails
+      console.error('Recalculation failed:', error);
+    }
   };
 
   const optimizeRoutes = async (existingCases?: CaseData[]) => {
@@ -125,7 +130,7 @@ const RouteOptimizer: React.FC = () => {
     } else {
       // Generate 200 random postcodes from the real postcode list
       console.log('📍 Generating cases from real postcodes...');
-      const postcodes = generateMultiplePostcodes(300);
+      const postcodes = generateMultiplePostcodes(200);
       
       initialCases = postcodes.map((postcodeCase, index) => ({
         id: `case-${index + 1}`,
@@ -350,7 +355,7 @@ const RouteOptimizer: React.FC = () => {
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 text-center bg-white p-8 rounded-lg shadow-md">
               <div className="mb-5 p-4 bg-blue-50 rounded-lg">
                 <p className="m-0">
-                  <strong>Test Scenario:</strong> 300 random London cases across 6 agents
+                  <strong>Test Scenario:</strong> 200 random London cases across 6 agents
                   <br />
                   <small className="text-gray-600">
                     • 8-hour shift (9am-5pm) • 45-minute lunch break • 5 minutes per case
