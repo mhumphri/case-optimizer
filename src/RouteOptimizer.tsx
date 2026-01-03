@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { useJsApiLoader } from '@react-google-maps/api';
-import type { Location, OptimizedRoute, CaseData, CasePriority, PriorityChange } from './types/route';
+import type { Location, OptimizedRoute, CaseData, CasePriority, CaseChange, TimeSlot } from './types/route';
 import { RouteMap } from './components/RouteMap';
 import { RouteDetails } from './components/RouteDetails';
 import { Header } from './components/Header';
@@ -11,10 +11,10 @@ const RouteOptimizer: React.FC = () => {
   const [error, setError] = useState<string>('');
   const [agentLocations, setAgentLocations] = useState<Location[]>([]);
   const [cases, setCases] = useState<CaseData[]>([]);
-  const [priorityChanges, setPriorityChanges] = useState<PriorityChange[]>([]);
+  const [caseChanges, setCaseChanges] = useState<CaseChange[]>([]);
   
-  // Store original case priorities for change tracking
-  const originalPriorities = useRef<Map<string, CasePriority>>(new Map());
+  // Store original case data for change tracking
+  const originalCaseData = useRef<Map<string, { priority: CasePriority; deliverySlot?: TimeSlot }>>(new Map());
 
   const googleMapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
@@ -39,19 +39,23 @@ const RouteOptimizer: React.FC = () => {
       );
       
       // Update changes list based on original priority
-      setPriorityChanges(prev => {
-        const originalPriority = originalPriorities.current.get(caseId);
-        if (!originalPriority) return prev;
+      setCaseChanges(prev => {
+        const originalData = originalCaseData.current.get(caseId);
+        if (!originalData) return prev;
         
-        // Remove any existing change for this case
-        const filteredChanges = prev.filter(change => change.caseId !== caseId);
+        const originalPriority = originalData.priority;
+        
+        // Remove any existing priority change for this case
+        const filteredChanges = prev.filter(change => 
+          !(change.caseId === caseId && 'oldPriority' in change)
+        );
         
         // If new priority is same as original, no change to track
         if (newPriority === originalPriority) {
           return filteredChanges;
         }
         
-        // Otherwise, add/update the change
+        // Otherwise, add/update the priority change
         return [
           ...filteredChanges,
           {
@@ -66,29 +70,97 @@ const RouteOptimizer: React.FC = () => {
     }
   };
 
-  const handleDeleteChange = (caseId: string) => {
-    // Get the original priority
-    const originalPriority = originalPriorities.current.get(caseId);
-    if (!originalPriority) return;
+  const handleSlotChange = (caseId: string, newSlot: TimeSlot | undefined) => {
+
+    console.log("handleSlotChange!!")
+    // Find the case
+    const targetCase = cases.find(c => c.id === caseId);
+    if (!targetCase) return;
     
-    // Restore the case to its original priority
+    // Update the case delivery slot
     setCases(prevCases => 
       prevCases.map(c => 
-        c.id === caseId ? { ...c, priority: originalPriority } : c
+        c.id === caseId ? { ...c, deliverySlot: newSlot } : c
       )
     );
     
-    // Remove the change from the list
-    setPriorityChanges(prev => prev.filter(change => change.caseId !== caseId));
+    // Update changes list based on original slot
+    setCaseChanges(prev => {
+      const originalData = originalCaseData.current.get(caseId);
+      if (!originalData) return prev;
+      
+      const originalSlot = originalData.deliverySlot;
+      
+      // Remove any existing slot change for this case
+      const filteredChanges = prev.filter(change => 
+        !(change.caseId === caseId && 'oldSlot' in change)
+      );
+      
+      // Compare slots (considering undefined)
+      const slotsEqual = 
+        (originalSlot === undefined && newSlot === undefined) ||
+        (originalSlot && newSlot && 
+         originalSlot.startTime === newSlot.startTime && 
+         originalSlot.endTime === newSlot.endTime);
+      
+      // If slot is same as original, no change to track
+      if (slotsEqual) {
+        return filteredChanges;
+      }
+      
+      // Otherwise, add/update the slot change
+      return [
+        ...filteredChanges,
+        {
+          caseId: targetCase.id,
+          casePostcode: targetCase.postcode,
+          oldSlot: originalSlot,
+          newSlot: newSlot,
+          timestamp: new Date(),
+        }
+      ];
+    });
+  };
+
+  const handleDeleteChange = (caseId: string, changeType: 'priority' | 'slot') => {
+    // Get the original data
+    const originalData = originalCaseData.current.get(caseId);
+    if (!originalData) return;
+    
+    if (changeType === 'priority') {
+      // Restore the case to its original priority
+      setCases(prevCases => 
+        prevCases.map(c => 
+          c.id === caseId ? { ...c, priority: originalData.priority } : c
+        )
+      );
+      
+      // Remove the priority change from the list
+      setCaseChanges(prev => prev.filter(change => 
+        !(change.caseId === caseId && 'oldPriority' in change)
+      ));
+    } else {
+      // Restore the case to its original slot
+      setCases(prevCases => 
+        prevCases.map(c => 
+          c.id === caseId ? { ...c, deliverySlot: originalData.deliverySlot } : c
+        )
+      );
+      
+      // Remove the slot change from the list
+      setCaseChanges(prev => prev.filter(change => 
+        !(change.caseId === caseId && 'oldSlot' in change)
+      ));
+    }
   };
 
   const handleRecalculate = async () => {
     try {
-      // Re-run optimization with current case priorities
+      // Re-run optimization with current case priorities and slots
       await optimizeRoutes(cases);
       
       // Clear changes list only after successful recalculation
-      setPriorityChanges([]);
+      setCaseChanges([]);
     } catch (error) {
       // Keep changes visible if recalculation fails
       console.error('Recalculation failed:', error);
@@ -101,7 +173,7 @@ const RouteOptimizer: React.FC = () => {
 
     // Clear changes if this is a new optimization (not a recalculation)
     if (!existingCases) {
-      setPriorityChanges([]);
+      setCaseChanges([]);
     }
 
     // Import utilities
@@ -114,28 +186,36 @@ const RouteOptimizer: React.FC = () => {
     const { generateCasePriority } = await import('./utils/caseGenerator');
     const { getPenaltyCost } = await import('./utils/priorityMapping');
     const { geocodePostcodes } = await import('./utils/geocoding');
+    const { generateDeliverySlot } = await import('./utils/timeSlotGenerator');
 
     let initialCases: CaseData[];
 
     // Use existing cases if recalculating, otherwise generate new ones
     if (existingCases && existingCases.length > 0) {
       initialCases = existingCases;
-      console.log('🔄 Recalculating with updated priorities...');
-      console.log(`   ${priorityChanges.length} priority changes to apply`);
+      console.log('🔄 Recalculating with updated priorities and slots...');
+      console.log(`   ${caseChanges.length} changes to apply`);
       
       // Log the changes
-      priorityChanges.forEach(change => {
-        console.log(`   - ${change.casePostcode}: ${change.oldPriority} → ${change.newPriority}`);
+      caseChanges.forEach(change => {
+        if ('oldPriority' in change) {
+          console.log(`   - ${change.casePostcode}: priority ${change.oldPriority} → ${change.newPriority}`);
+        } else {
+          const oldSlot = change.oldSlot ? `${change.oldSlot.startTime}-${change.oldSlot.endTime}` : 'None';
+          const newSlot = change.newSlot ? `${change.newSlot.startTime}-${change.newSlot.endTime}` : 'None';
+          console.log(`   - ${change.casePostcode}: slot ${oldSlot} → ${newSlot}`);
+        }
       });
     } else {
       // Generate 200 random postcodes from the real postcode list
-      console.log('📍 Generating cases from real postcodes...');
+      console.log('📍 Generating 200 unique cases from real postcodes...');
       const postcodes = generateMultiplePostcodes(200);
       
       initialCases = postcodes.map((postcodeCase, index) => ({
         id: `case-${index + 1}`,
         postcode: postcodeCase.postcode,
         priority: generateCasePriority(),
+        deliverySlot: generateDeliverySlot(), // 1 in 12 cases get a delivery slot
         status: 'pending' as const,
         assignedAgentIndex: null,
       }));
@@ -157,9 +237,9 @@ const RouteOptimizer: React.FC = () => {
         location: geocodedLocations.get(c.postcode),
       }));
 
-      // Store original priorities for change tracking
-      originalPriorities.current = new Map(
-        initialCases.map(c => [c.id, c.priority])
+      // Store original case data for change tracking
+      originalCaseData.current = new Map(
+        initialCases.map(c => [c.id, { priority: c.priority, deliverySlot: c.deliverySlot }])
       );
 
       // Store geocoded agent locations
@@ -173,21 +253,35 @@ const RouteOptimizer: React.FC = () => {
       console.warn(`⚠️  ${initialCases.length - casesWithCoords.length} cases failed to geocode and will be skipped`);
     }
 
-    const shipments = casesWithCoords.map((caseData) => ({
-      deliveries: [
-        {
-          arrivalLocation: { 
-            latitude: caseData.location!.latitude, 
-            longitude: caseData.location!.longitude 
+    const { timeStringToSeconds } = await import('./utils/timeSlotGenerator');
+
+    const shipments = casesWithCoords.map((caseData) => {
+      const baseShipment = {
+        deliveries: [
+          {
+            arrivalLocation: { 
+              latitude: caseData.location!.latitude, 
+              longitude: caseData.location!.longitude 
+            },
+            duration: { seconds: 300 }, // 5 minutes per case
+            timeWindows: [getShiftTimeWindow()], // Must be completed during shift
           },
-          duration: { seconds: 300 }, // 5 minutes per case
-          timeWindows: [getShiftTimeWindow()], // Must be completed during shift
-        },
-      ],
-      label: caseData.postcode,
-      // Penalty cost for NOT completing this delivery (based on priority)
-      penaltyCost: getPenaltyCost(caseData.priority),
-    }));
+        ],
+        label: caseData.postcode,
+        // Penalty cost for NOT completing this delivery (based on priority)
+        penaltyCost: getPenaltyCost(caseData.priority),
+      };
+
+      // If case has a delivery slot, add it as an additional time window constraint
+      if (caseData.deliverySlot) {
+        baseShipment.deliveries[0].timeWindows = [{
+          startTime: { seconds: timeStringToSeconds(caseData.deliverySlot.startTime) },
+          endTime: { seconds: timeStringToSeconds(caseData.deliverySlot.endTime) },
+        }];
+      }
+
+      return baseShipment;
+    });
 
     // Agent postcodes
     const agentPostcodes = ['W6 9LI', 'W2 3EL', 'SE12 4WH', 'E10 1PI', 'SE14 5NP', 'SW15 7GB'];
@@ -224,15 +318,49 @@ const RouteOptimizer: React.FC = () => {
       },
     }));
 
+    // Set up time context for London timezone
+    const today = new Date();
+    const londonDate = new Date(today.toLocaleString('en-US', { timeZone: 'Europe/London' }));
+    londonDate.setHours(0, 0, 0, 0); // Start of day in London
+    
+    console.log('🌍 Setting global time context:');
+    console.log(`   Start: ${londonDate.toISOString()}`);
+    console.log(`   Timezone: Europe/London`);
+    
     const requestBody = {
       model: {
         shipments,
         vehicles,
+        // Explicitly set the reference time for the optimization
+        // This ensures time windows are interpreted in London timezone
+        globalStartTime: londonDate.toISOString(),
+        globalEndTime: new Date(londonDate.getTime() + 24 * 60 * 60 * 1000).toISOString(),
       },
     };
 
     try {
       console.log('📤 Sending optimization request...');
+      
+      // Debug: Log sample shipment to verify structure
+      if (shipments.length > 0) {
+        console.log('📦 Sample shipment structure:', JSON.stringify(shipments[0], null, 2));
+        const slotsCount = shipments.filter(s => 
+          s.deliveries[0].timeWindows[0].startTime.seconds !== 32400
+        ).length;
+        console.log(`   Cases with delivery slots: ${slotsCount}/${shipments.length}`);
+        
+        // Log a few delivery slots with their times
+        const casesWithSlots = casesWithCoords.filter(c => c.deliverySlot);
+        if (casesWithSlots.length > 0) {
+          console.log('🕐 Sample delivery slots:');
+          casesWithSlots.slice(0, 3).forEach(c => {
+            const slot = c.deliverySlot!;
+            const startSeconds = timeStringToSeconds(slot.startTime);
+            const endSeconds = timeStringToSeconds(slot.endTime);
+            console.log(`   ${c.postcode}: ${slot.startTime}-${slot.endTime} (${startSeconds}-${endSeconds} seconds)`);
+          });
+        }
+      }
       
       // Log priority distribution
       const priorityDistribution = {
@@ -355,7 +483,7 @@ const RouteOptimizer: React.FC = () => {
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 text-center bg-white p-8 rounded-lg shadow-md">
               <div className="mb-5 p-4 bg-blue-50 rounded-lg">
                 <p className="m-0">
-                  <strong>Test Scenario:</strong> 200 random London cases across 6 agents
+                  <strong>Test Scenario:</strong> 200 unique London cases across 6 agents
                   <br />
                   <small className="text-gray-600">
                     • 8-hour shift (9am-5pm) • 45-minute lunch break • 5 minutes per case
@@ -367,6 +495,10 @@ const RouteOptimizer: React.FC = () => {
                   <br />
                   <small className="text-gray-600 mt-1 block">
                     • Priority-based optimization: High (£1000) | Medium (£300) | Low (£100)
+                  </small>
+                  <br />
+                  <small className="text-gray-600 mt-1 block">
+                    • ~1 in 12 cases have delivery time slots (9am-5pm)
                   </small>
                 </p>
               </div>
@@ -416,7 +548,8 @@ const RouteOptimizer: React.FC = () => {
               routes={optimizedRoutes} 
               cases={cases}
               onPriorityChange={handlePriorityChange}
-              changes={priorityChanges}
+              onSlotChange={handleSlotChange}
+              changes={caseChanges}
               onRecalculate={handleRecalculate}
               onDeleteChange={handleDeleteChange}
               isRecalculating={loading}

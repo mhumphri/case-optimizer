@@ -1,6 +1,7 @@
 import React from 'react';
-import type { CaseData, CasePriority } from '../types/route';
+import type { CaseData, CasePriority, TimeSlot } from '../types/route';
 import { formatTime } from '../utils/formatters';
+import { TimeSlotInput } from './TimeSlotInput';
 
 interface CaseCardProps {
   caseData: CaseData;
@@ -8,6 +9,7 @@ interface CaseCardProps {
   agentColor: string;
   routeNumber: number | null; // Position in agent's route (1, 2, 3...)
   onPriorityChange: (caseId: string, priority: CasePriority) => void;
+  onSlotChange: (caseId: string, slot: TimeSlot | undefined) => void;
 }
 
 const PRIORITY_COLORS = {
@@ -21,7 +23,8 @@ export const CaseCard: React.FC<CaseCardProps> = ({
   agentLabel, 
   agentColor,
   routeNumber,
-  onPriorityChange 
+  onPriorityChange,
+  onSlotChange,
 }) => {
   return (
     <div className="bg-white rounded-lg p-3 mb-3 border border-gray-300 shadow-sm">
@@ -74,6 +77,13 @@ export const CaseCard: React.FC<CaseCardProps> = ({
           </div>
         </div>
       )}
+
+      {/* Delivery Time Slot */}
+      <TimeSlotInput
+        caseId={caseData.id}
+        deliverySlot={caseData.deliverySlot}
+        onSlotChange={onSlotChange}
+      />
 
       {/* Status and Priority Dropdown */}
       <div className="flex gap-2 items-center">

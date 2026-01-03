@@ -24,6 +24,11 @@ export interface OptimizedRoute {
 export type CasePriority = 'low' | 'medium' | 'high';
 export type CaseStatus = 'pending' | 'complete';
 
+export interface TimeSlot {
+  startTime: string; // Format: "HH:mm"
+  endTime: string;   // Format: "HH:mm"
+}
+
 export interface CaseData {
   id: string;
   postcode: string;
@@ -32,6 +37,7 @@ export interface CaseData {
   status: CaseStatus;
   assignedAgentIndex: number | null; // null if unallocated
   deliveryTime?: string | { seconds: number }; // Expected delivery time
+  deliverySlot?: TimeSlot; // Required delivery time window (optional)
 }
 
 export interface PriorityChange {
@@ -41,3 +47,13 @@ export interface PriorityChange {
   newPriority: CasePriority;
   timestamp: Date;
 }
+
+export interface TimeSlotChange {
+  caseId: string;
+  casePostcode: string;
+  oldSlot: TimeSlot | undefined;
+  newSlot: TimeSlot | undefined;
+  timestamp: Date;
+}
+
+export type CaseChange = PriorityChange | TimeSlotChange;

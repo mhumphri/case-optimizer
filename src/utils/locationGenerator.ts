@@ -194,20 +194,26 @@ export interface PostcodeCase {
 }
 
 /**
- * Randomly select postcodes from the real London postcodes array
+ * Randomly select unique postcodes from the real London postcodes array
+ * Each postcode will only be used once (no duplicates)
  */
 export const generateMultiplePostcodes = (count: number): PostcodeCase[] => {
-  const selectedPostcodes: PostcodeCase[] = [];
-  
-  for (let i = 0; i < count; i++) {
-    // Randomly select a postcode from the array
-    const randomIndex = Math.floor(Math.random() * LONDON_POSTCODES.length);
-    selectedPostcodes.push({
-      postcode: LONDON_POSTCODES[randomIndex]
-    });
+  if (count > LONDON_POSTCODES.length) {
+    console.warn(`⚠️  Requested ${count} postcodes but only ${LONDON_POSTCODES.length} unique postcodes available. Will use all available.`);
+    count = LONDON_POSTCODES.length;
   }
   
-  return selectedPostcodes;
+  // Create a copy of the postcodes array and shuffle it
+  const shuffledPostcodes = [...LONDON_POSTCODES];
+  
+  // Fisher-Yates shuffle algorithm
+  for (let i = shuffledPostcodes.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffledPostcodes[i], shuffledPostcodes[j]] = [shuffledPostcodes[j], shuffledPostcodes[i]];
+  }
+  
+  // Take the first 'count' postcodes (all unique)
+  return shuffledPostcodes.slice(0, count).map(postcode => ({ postcode }));
 };
 
 /**

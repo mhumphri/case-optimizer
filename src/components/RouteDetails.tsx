@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import type { OptimizedRoute, CaseData, CasePriority, PriorityChange } from '../types/route';
+import type { OptimizedRoute, CaseData, CasePriority, CaseChange, TimeSlot } from '../types/route';
 import { AgentCard } from './AgentCard';
 import { CaseCard } from './CaseCard';
 import { ChangesPanel } from './ChangesPanel';
@@ -8,9 +8,10 @@ interface RouteDetailsProps {
   routes: OptimizedRoute[];
   cases: CaseData[];
   onPriorityChange: (caseId: string, priority: CasePriority) => void;
-  changes: PriorityChange[];
+  onSlotChange: (caseId: string, slot: TimeSlot | undefined) => void;
+  changes: CaseChange[];
   onRecalculate: () => void;
-  onDeleteChange: (caseId: string) => void;
+  onDeleteChange: (caseId: string, changeType: 'priority' | 'slot') => void;
   isRecalculating: boolean;
 }
 
@@ -33,6 +34,7 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
   routes, 
   cases, 
   onPriorityChange,
+  onSlotChange,
   changes,
   onRecalculate,
   onDeleteChange,
@@ -151,6 +153,9 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
                 route={route} 
                 index={index}
                 color={ROUTE_COLORS[index % ROUTE_COLORS.length]}
+                cases={cases}
+                onPriorityChange={onPriorityChange}
+                onSlotChange={onSlotChange}
               />
             ))}
           </div>
@@ -194,6 +199,7 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
                     agentColor={agentColor}
                     routeNumber={routeNumber}
                     onPriorityChange={onPriorityChange}
+                    onSlotChange={onSlotChange}
                   />
                 );
               })
