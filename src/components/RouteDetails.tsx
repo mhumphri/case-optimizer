@@ -1,12 +1,17 @@
 import React, { useState, useMemo } from 'react';
-import type { OptimizedRoute, CaseData, CasePriority } from '../types/route';
+import type { OptimizedRoute, CaseData, CasePriority, PriorityChange } from '../types/route';
 import { AgentCard } from './AgentCard';
 import { CaseCard } from './CaseCard';
+import { ChangesPanel } from './ChangesPanel';
 
 interface RouteDetailsProps {
   routes: OptimizedRoute[];
   cases: CaseData[];
   onPriorityChange: (caseId: string, priority: CasePriority) => void;
+  changes: PriorityChange[];
+  onRecalculate: () => void;
+  onDeleteChange: (caseId: string) => void;
+  isRecalculating: boolean;
 }
 
 // Colors for different agent routes (same as RouteMap)
@@ -24,7 +29,15 @@ const ROUTE_COLORS = [
 type ViewMode = 'agents' | 'cases';
 type CaseFilter = 'all' | 'allocated' | 'unallocated';
 
-export const RouteDetails: React.FC<RouteDetailsProps> = ({ routes, cases, onPriorityChange }) => {
+export const RouteDetails: React.FC<RouteDetailsProps> = ({ 
+  routes, 
+  cases, 
+  onPriorityChange,
+  changes,
+  onRecalculate,
+  onDeleteChange,
+  isRecalculating,
+}) => {
   const [viewMode, setViewMode] = useState<ViewMode>('agents');
   const [caseFilter, setCaseFilter] = useState<CaseFilter>('all');
 
@@ -128,7 +141,7 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({ routes, cases, onPri
       </div>
 
       {/* Scrollable Content Area */}
-      <div className="flex-1 overflow-y-auto p-3">
+      <div className="flex-1 overflow-y-auto p-3 min-h-0">
         {viewMode === 'agents' ? (
           // Agents View
           <div>
@@ -153,12 +166,23 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({ routes, cases, onPri
                 // Find which agent this case is assigned to
                 let agentLabel: string | null = null;
                 let agentColor = '#9ca3af'; // Grey for unallocated
+                let routeNumber: number | null = null;
                 
                 if (caseData.assignedAgentIndex !== null) {
                   const route = routes[caseData.assignedAgentIndex];
                   if (route) {
                     agentLabel = route.vehicleLabel.replace('Vehicle', 'Agent');
                     agentColor = ROUTE_COLORS[caseData.assignedAgentIndex % ROUTE_COLORS.length];
+                    
+                    // Find the visit index (position in route) for this case
+                    const visitIndex = route.visits.findIndex(visit => {
+                      // Match by shipment index which corresponds to case
+                      return visit.shipmentLabel === caseData.postcode;
+                    });
+                    
+                    if (visitIndex >= 0) {
+                      routeNumber = visitIndex + 1; // 1-indexed for display
+                    }
                   }
                 }
 
@@ -168,6 +192,7 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({ routes, cases, onPri
                     caseData={caseData}
                     agentLabel={agentLabel}
                     agentColor={agentColor}
+                    routeNumber={routeNumber}
                     onPriorityChange={onPriorityChange}
                   />
                 );
@@ -176,6 +201,14 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({ routes, cases, onPri
           </div>
         )}
       </div>
+
+      {/* Fixed Changes Panel at Bottom */}
+      <ChangesPanel 
+        changes={changes}
+        onRecalculate={onRecalculate}
+        onDeleteChange={onDeleteChange}
+        isRecalculating={isRecalculating}
+      />
     </div>
   );
 };

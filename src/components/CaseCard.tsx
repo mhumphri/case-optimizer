@@ -6,6 +6,7 @@ interface CaseCardProps {
   caseData: CaseData;
   agentLabel: string | null;
   agentColor: string;
+  routeNumber: number | null; // Position in agent's route (1, 2, 3...)
   onPriorityChange: (caseId: string, priority: CasePriority) => void;
 }
 
@@ -19,14 +20,27 @@ export const CaseCard: React.FC<CaseCardProps> = ({
   caseData, 
   agentLabel, 
   agentColor,
+  routeNumber,
   onPriorityChange 
 }) => {
   return (
     <div className="bg-white rounded-lg p-3 mb-3 border border-gray-300 shadow-sm">
-      {/* Case ID/Postcode */}
+      {/* Case ID/Postcode with Route Number */}
       <div className="flex justify-between items-start mb-2">
-        <h4 className="m-0 text-sm font-semibold text-gray-800">
-          📍 {caseData.postcode}
+        <h4 className="m-0 text-sm font-semibold text-gray-800 flex items-center gap-2">
+          {routeNumber !== null && (
+            <span 
+              className="inline-flex items-center justify-center rounded-full text-white font-bold text-[10px] shrink-0"
+              style={{
+                width: '20px',
+                height: '20px',
+                backgroundColor: agentColor,
+              }}
+            >
+              {routeNumber}
+            </span>
+          )}
+          <span>📍 {caseData.postcode}</span>
         </h4>
         <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${PRIORITY_COLORS[caseData.priority]}`}>
           {caseData.priority.toUpperCase()}

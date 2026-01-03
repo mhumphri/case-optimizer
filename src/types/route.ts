@@ -27,8 +27,17 @@ export type CaseStatus = 'pending' | 'complete';
 export interface CaseData {
   id: string;
   postcode: string;
-  location: Location;
+  location?: Location; // Geocoded coordinates
   priority: CasePriority;
   status: CaseStatus;
   assignedAgentIndex: number | null; // null if unallocated
+  deliveryTime?: string | { seconds: number }; // Expected delivery time
+}
+
+export interface PriorityChange {
+  caseId: string;
+  casePostcode: string;
+  oldPriority: CasePriority;
+  newPriority: CasePriority;
+  timestamp: Date;
 }

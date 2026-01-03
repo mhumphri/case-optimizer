@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useJsApiLoader } from '@react-google-maps/api';
-import type { Location, OptimizedRoute, CaseData, CasePriority } from './types/route';
+import type { Location, OptimizedRoute, CaseData, CasePriority, PriorityChange } from './types/route';
 import { RouteMap } from './components/RouteMap';
 import { RouteDetails } from './components/RouteDetails';
 import { Header } from './components/Header';
@@ -11,6 +11,10 @@ const RouteOptimizer: React.FC = () => {
   const [error, setError] = useState<string>('');
   const [agentLocations, setAgentLocations] = useState<Location[]>([]);
   const [cases, setCases] = useState<CaseData[]>([]);
+  const [priorityChanges, setPriorityChanges] = useState<PriorityChange[]>([]);
+  
+  // Store original case priorities for change tracking
+  const originalPriorities = useRef<Map<string, CasePriority>>(new Map());
 
   const googleMapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
@@ -18,46 +22,158 @@ const RouteOptimizer: React.FC = () => {
     googleMapsApiKey: googleMapsApiKey || '',
   });
 
-  const handlePriorityChange = (caseId: string, priority: CasePriority) => {
-    setCases(prevCases => 
-      prevCases.map(c => 
-        c.id === caseId ? { ...c, priority } : c
-      )
-    );
+  const handlePriorityChange = (caseId: string, newPriority: CasePriority) => {
+    // Find the case first to get its current priority
+    const targetCase = cases.find(c => c.id === caseId);
+    if (!targetCase) return;
+    
+    const currentPriority = targetCase.priority;
+    
+    // Only update if priority actually changed
+    if (currentPriority !== newPriority) {
+      // Update the case priority
+      setCases(prevCases => 
+        prevCases.map(c => 
+          c.id === caseId ? { ...c, priority: newPriority } : c
+        )
+      );
+      
+      // Update changes list based on original priority
+      setPriorityChanges(prev => {
+        const originalPriority = originalPriorities.current.get(caseId);
+        if (!originalPriority) return prev;
+        
+        // Remove any existing change for this case
+        const filteredChanges = prev.filter(change => change.caseId !== caseId);
+        
+        // If new priority is same as original, no change to track
+        if (newPriority === originalPriority) {
+          return filteredChanges;
+        }
+        
+        // Otherwise, add/update the change
+        return [
+          ...filteredChanges,
+          {
+            caseId: targetCase.id,
+            casePostcode: targetCase.postcode,
+            oldPriority: originalPriority,
+            newPriority,
+            timestamp: new Date(),
+          }
+        ];
+      });
+    }
   };
 
-  const optimizeRoutes = async () => {
+  const handleDeleteChange = (caseId: string) => {
+    // Get the original priority
+    const originalPriority = originalPriorities.current.get(caseId);
+    if (!originalPriority) return;
+    
+    // Restore the case to its original priority
+    setCases(prevCases => 
+      prevCases.map(c => 
+        c.id === caseId ? { ...c, priority: originalPriority } : c
+      )
+    );
+    
+    // Remove the change from the list
+    setPriorityChanges(prev => prev.filter(change => change.caseId !== caseId));
+  };
+
+  const handleRecalculate = async () => {
+    // Clear changes list
+    setPriorityChanges([]);
+    
+    // Re-run optimization with current case priorities
+    await optimizeRoutes(cases);
+  };
+
+  const optimizeRoutes = async (existingCases?: CaseData[]) => {
     setLoading(true);
     setError('');
 
-    // Import location generator utilities
+    // Clear changes if this is a new optimization (not a recalculation)
+    if (!existingCases) {
+      setPriorityChanges([]);
+    }
+
+    // Import utilities
     const { 
-      generateMultipleLocations, 
+      generateMultiplePostcodes, 
       getShiftTimeWindow,
       getLunchBreakConstraint 
     } = await import('./utils/locationGenerator');
 
     const { generateCasePriority } = await import('./utils/caseGenerator');
     const { getPenaltyCost } = await import('./utils/priorityMapping');
+    const { geocodePostcodes } = await import('./utils/geocoding');
 
-    // Generate 200 random case locations in London with priorities
-    const caseLocations = generateMultipleLocations(200);
-    
-    const initialCases: CaseData[] = caseLocations.map((location, index) => ({
-      id: `case-${index + 1}`,
-      postcode: location.postcode,
-      location: { latitude: location.latitude, longitude: location.longitude },
-      priority: generateCasePriority(),
-      status: 'pending',
-      assignedAgentIndex: null, // Will be updated after optimization
-    }));
+    let initialCases: CaseData[];
 
-    const shipments = initialCases.map((caseData, index) => ({
+    // Use existing cases if recalculating, otherwise generate new ones
+    if (existingCases && existingCases.length > 0) {
+      initialCases = existingCases;
+      console.log('🔄 Recalculating with updated priorities...');
+      console.log(`   ${priorityChanges.length} priority changes to apply`);
+      
+      // Log the changes
+      priorityChanges.forEach(change => {
+        console.log(`   - ${change.casePostcode}: ${change.oldPriority} → ${change.newPriority}`);
+      });
+    } else {
+      // Generate 200 random postcodes from the real postcode list
+      console.log('📍 Generating cases from real postcodes...');
+      const postcodes = generateMultiplePostcodes(300);
+      
+      initialCases = postcodes.map((postcodeCase, index) => ({
+        id: `case-${index + 1}`,
+        postcode: postcodeCase.postcode,
+        priority: generateCasePriority(),
+        status: 'pending' as const,
+        assignedAgentIndex: null,
+      }));
+
+      // Geocode all postcodes (cases + agents)
+      console.log('🌍 Geocoding postcodes...');
+      const agentPostcodes = ['W6 9LI', 'W2 3EL', 'SE12 4WH', 'E10 1PI', 'SE14 5NP', 'SW15 7GB'];
+      const allPostcodes = [...new Set([...postcodes.map(p => p.postcode), ...agentPostcodes])];
+      
+      const geocodedLocations = await geocodePostcodes(allPostcodes, (completed, total) => {
+        console.log(`   Geocoded ${completed}/${total} postcodes`);
+      });
+
+      console.log(`✅ Geocoded ${geocodedLocations.size} unique postcodes`);
+
+      // Add geocoded locations to cases
+      initialCases = initialCases.map(c => ({
+        ...c,
+        location: geocodedLocations.get(c.postcode),
+      }));
+
+      // Store original priorities for change tracking
+      originalPriorities.current = new Map(
+        initialCases.map(c => [c.id, c.priority])
+      );
+
+      // Store geocoded agent locations
+      const agentLocs = agentPostcodes.map(pc => geocodedLocations.get(pc)).filter(Boolean) as Location[];
+      setAgentLocations(agentLocs);
+    }
+
+    // Filter out cases without coordinates
+    const casesWithCoords = initialCases.filter(c => c.location);
+    if (casesWithCoords.length < initialCases.length) {
+      console.warn(`⚠️  ${initialCases.length - casesWithCoords.length} cases failed to geocode and will be skipped`);
+    }
+
+    const shipments = casesWithCoords.map((caseData) => ({
       deliveries: [
         {
           arrivalLocation: { 
-            latitude: caseData.location.latitude, 
-            longitude: caseData.location.longitude 
+            latitude: caseData.location!.latitude, 
+            longitude: caseData.location!.longitude 
           },
           duration: { seconds: 300 }, // 5 minutes per case
           timeWindows: [getShiftTimeWindow()], // Must be completed during shift
@@ -65,48 +181,43 @@ const RouteOptimizer: React.FC = () => {
       ],
       label: caseData.postcode,
       // Penalty cost for NOT completing this delivery (based on priority)
-      // High priority = high cost to skip = optimizer will prioritize it
       penaltyCost: getPenaltyCost(caseData.priority),
     }));
 
-    // Fixed agent start/end locations with specific postcodes
-    const agentStartLocations = [
-      { latitude: 51.4935, longitude: -0.2291, postcode: 'W6 9LI' },
-      { latitude: 51.5154, longitude: -0.1755, postcode: 'W2 3EL' },
-      { latitude: 51.4484, longitude: 0.0285, postcode: 'SE12 4WH' },
-      { latitude: 51.5685, longitude: -0.0141, postcode: 'E10 1PI' },
-      { latitude: 51.4658, longitude: -0.0348, postcode: 'SE14 5NP' },
-      { latitude: 51.4525, longitude: -0.2280, postcode: 'SW15 7GB' },
-    ];
+    // Agent postcodes
+    const agentPostcodes = ['W6 9LI', 'W2 3EL', 'SE12 4WH', 'E10 1PI', 'SE14 5NP', 'SW15 7GB'];
+    
+    // Get agent locations (already geocoded above for new optimization, or from state for recalculation)
+    const agentLocs = existingCases && agentLocations.length > 0 
+      ? agentLocations 
+      : agentPostcodes.map(pc => {
+          const loc = initialCases[0]?.location ? 
+            (async () => {
+              const { geocodePostcode } = await import('./utils/geocoding');
+              return await geocodePostcode(pc);
+            })() : null;
+          return loc;
+        });
 
     const shiftTimeWindow = getShiftTimeWindow();
     const lunchBreak = getLunchBreakConstraint();
 
-    const vehicles = agentStartLocations.map((location, index) => ({
-      startLocation: { 
-        latitude: location.latitude, 
-        longitude: location.longitude 
-      },
-      endLocation: { 
-        latitude: location.latitude, 
-        longitude: location.longitude 
-      },
-      label: `Agent ${index + 1} (${location.postcode})`,
-      startTimeWindows: [shiftTimeWindow], // Shift starts at 9am
-      endTimeWindows: [shiftTimeWindow], // Shift ends at 5pm
+    const vehicles = agentPostcodes.map((postcode, index) => ({
+      startLocation: agentLocations[index] || { latitude: 51.5074, longitude: -0.1278 }, // Fallback to London center
+      endLocation: agentLocations[index] || { latitude: 51.5074, longitude: -0.1278 },
+      label: `Agent ${index + 1} (${postcode})`,
+      startTimeWindows: [shiftTimeWindow],
+      endTimeWindows: [shiftTimeWindow],
       breakRule: {
         breakRequests: [
           {
             earliestStartTime: lunchBreak.startTime,
-            latestStartTime: { seconds: lunchBreak.startTime.seconds + 3600 }, // Lunch between 12pm-1pm
+            latestStartTime: { seconds: lunchBreak.startTime.seconds + 3600 },
             minDuration: lunchBreak.duration,
           },
         ],
       },
     }));
-
-    // Store agent locations
-    setAgentLocations(vehicles.map(v => v.startLocation));
 
     const requestBody = {
       model: {
@@ -147,13 +258,13 @@ const RouteOptimizer: React.FC = () => {
         vehicleLabel: route.vehicleLabel || `Vehicle ${index + 1}`,
         visits: route.visits?.map((visit: any) => {
           const shipmentIndex = visit.shipmentIndex;
-          const location = shipments[shipmentIndex]?.deliveries[0]?.arrivalLocation;
+          const caseData = casesWithCoords[shipmentIndex];
           
           return {
             shipmentIndex: visit.shipmentIndex,
-            shipmentLabel: visit.shipmentLabel || shipments[shipmentIndex]?.label || `Stop ${shipmentIndex + 1}`,
+            shipmentLabel: visit.shipmentLabel || caseData?.postcode || `Stop ${shipmentIndex + 1}`,
             startTime: visit.startTime,
-            arrivalLocation: location,
+            arrivalLocation: caseData?.location,
           };
         }) || [],
         metrics: {
@@ -170,8 +281,8 @@ const RouteOptimizer: React.FC = () => {
 
         for (let routeIdx = 0; routeIdx < routes.length; routeIdx++) {
           const visit = routes[routeIdx].visits.find(v => {
-            const shipmentIndex = v.shipmentIndex;
-            return initialCases[shipmentIndex]?.id === caseData.id;
+            // Match by postcode label
+            return v.shipmentLabel === caseData.postcode;
           });
 
           if (visit) {
@@ -187,6 +298,9 @@ const RouteOptimizer: React.FC = () => {
           deliveryTime: deliveryTime,
         };
       });
+
+      setOptimizedRoutes(routes);
+      setCases(updatedCases);
 
       setOptimizedRoutes(routes);
       setCases(updatedCases);
@@ -236,7 +350,7 @@ const RouteOptimizer: React.FC = () => {
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 text-center bg-white p-8 rounded-lg shadow-md">
               <div className="mb-5 p-4 bg-blue-50 rounded-lg">
                 <p className="m-0">
-                  <strong>Test Scenario:</strong> 200 random London cases across 6 agents
+                  <strong>Test Scenario:</strong> 300 random London cases across 6 agents
                   <br />
                   <small className="text-gray-600">
                     • 8-hour shift (9am-5pm) • 45-minute lunch break • 5 minutes per case
@@ -261,7 +375,7 @@ const RouteOptimizer: React.FC = () => {
                     : 'bg-blue-500 cursor-pointer hover:bg-blue-600'
                 }`}
               >
-                {loading ? '⏳ Optimizing...' : '🚀 Optimize Cases'}
+                {loading ? '⏳ Geocoding & Optimizing...' : '🚀 Optimize Cases'}
               </button>
             </div>
           )}
@@ -297,6 +411,10 @@ const RouteOptimizer: React.FC = () => {
               routes={optimizedRoutes} 
               cases={cases}
               onPriorityChange={handlePriorityChange}
+              changes={priorityChanges}
+              onRecalculate={handleRecalculate}
+              onDeleteChange={handleDeleteChange}
+              isRecalculating={loading}
             />
           </div>
         )}
