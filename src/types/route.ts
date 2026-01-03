@@ -20,3 +20,15 @@ export interface OptimizedRoute {
   visits: Visit[];
   metrics: RouteMetrics;
 }
+
+export type CasePriority = 'low' | 'medium' | 'high';
+export type CaseStatus = 'pending' | 'complete';
+
+export interface CaseData {
+  id: string;
+  postcode: string;
+  location: Location;
+  priority: CasePriority;
+  status: CaseStatus;
+  assignedAgentIndex: number | null; // null if unallocated
+}

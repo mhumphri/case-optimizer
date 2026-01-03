@@ -5,13 +5,12 @@ import { formatTime } from '../utils/formatters';
 
 interface RouteMapProps {
   routes: OptimizedRoute[];
-  vehicleLocations: Location[];
+  agentLocations: Location[];
 }
 
 const mapContainerStyle = {
   width: '100%',
-  height: '500px',
-  borderRadius: '8px',
+  height: '100%',
 };
 
 const defaultCenter = {
@@ -19,7 +18,7 @@ const defaultCenter = {
   lng: -0.1278,
 };
 
-// Colors for different vehicle routes
+// Colors for different agent routes
 const ROUTE_COLORS = [
   '#4285f4', // Blue
   '#ea4335', // Red
@@ -31,14 +30,14 @@ const ROUTE_COLORS = [
   '#e91e63', // Pink
 ];
 
-export const RouteMap: React.FC<RouteMapProps> = ({ routes, vehicleLocations }) => {
+export const RouteMap: React.FC<RouteMapProps> = ({ routes, agentLocations }) => {
   const [selectedMarker, setSelectedMarker] = useState<{ routeIndex: number; visitIndex: number } | null>(null);
 
-  const getRoutePath = (route: OptimizedRoute, vehicleLocation: Location) => {
+  const getRoutePath = (route: OptimizedRoute, agentLocation: Location) => {
     const path = [];
 
-    if (vehicleLocation) {
-      path.push({ lat: vehicleLocation.latitude, lng: vehicleLocation.longitude });
+    if (agentLocation) {
+      path.push({ lat: agentLocation.latitude, lng: agentLocation.longitude });
     }
 
     route.visits.forEach(visit => {
@@ -50,63 +49,34 @@ export const RouteMap: React.FC<RouteMapProps> = ({ routes, vehicleLocations }) 
       }
     });
 
-    if (vehicleLocation) {
-      path.push({ lat: vehicleLocation.latitude, lng: vehicleLocation.longitude });
+    if (agentLocation) {
+      path.push({ lat: agentLocation.latitude, lng: agentLocation.longitude });
     }
 
     return path;
   };
 
   return (
-    <div style={{ marginBottom: '30px' }}>
-      <h2>🗺️ Route Map</h2>
-      
-      {/* Route Legend */}
-      {routes.length > 1 && (
-        <div style={{ 
-          marginBottom: '15px', 
-          padding: '12px', 
-          backgroundColor: '#f5f5f5', 
-          borderRadius: '8px',
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: '12px',
-        }}>
-          {routes.map((route, index) => (
-            <div key={index} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <div style={{
-                width: '20px',
-                height: '4px',
-                backgroundColor: ROUTE_COLORS[index % ROUTE_COLORS.length],
-                borderRadius: '2px',
-              }} />
-              <span style={{ fontSize: '13px', fontWeight: '500' }}>
-                {route.vehicleLabel}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-      
+    <div className="w-full h-full">
       <GoogleMap
         mapContainerStyle={mapContainerStyle}
         center={defaultCenter}
         zoom={10}
       >
-        {/* Vehicle Start Markers */}
-        {vehicleLocations.map((location, index) => (
+        {/* Agent Start Markers */}
+        {agentLocations.map((location, index) => (
           <Marker
-            key={`vehicle-${index}`}
+            key={`agent-${index}`}
             position={{ lat: location.latitude, lng: location.longitude }}
             label={{
-              text: '🚚',
+              text: '👤',
               fontSize: '20px',
             }}
-            title={routes[index]?.vehicleLabel || `Vehicle ${index + 1}`}
+            title={routes[index]?.vehicleLabel || `Agent ${index + 1}`}
           />
         ))}
 
-        {/* Delivery Location Markers for all routes */}
+        {/* Case Location Markers for all routes */}
         {routes.map((route, routeIndex) => 
           route.visits.map((visit, visitIndex) => {
             if (!visit.arrivalLocation) return null;
@@ -140,9 +110,9 @@ export const RouteMap: React.FC<RouteMapProps> = ({ routes, vehicleLocations }) 
                   <InfoWindow onCloseClick={() => setSelectedMarker(null)}>
                     <div>
                       <strong>{route.vehicleLabel}</strong>
-                      <p style={{ margin: '5px 0' }}>Stop {visitIndex + 1}: {visit.shipmentLabel}</p>
+                      <p className="my-1">Case {visitIndex + 1}: {visit.shipmentLabel}</p>
                       {formatTime(visit.startTime) && (
-                        <p style={{ margin: '5px 0', fontSize: '12px', color: '#666' }}>
+                        <p className="my-1 text-xs text-gray-600">
                           Arrival: {formatTime(visit.startTime)}
                         </p>
                       )}
@@ -154,14 +124,14 @@ export const RouteMap: React.FC<RouteMapProps> = ({ routes, vehicleLocations }) 
           })
         )}
 
-        {/* Route Polylines for all vehicles */}
+        {/* Route Polylines for all agents */}
         {routes.map((route, index) => {
-          if (!vehicleLocations[index]) return null;
+          if (!agentLocations[index]) return null;
           
           return (
             <Polyline
               key={`route-${index}`}
-              path={getRoutePath(route, vehicleLocations[index])}
+              path={getRoutePath(route, agentLocations[index])}
               options={{
                 strokeColor: ROUTE_COLORS[index % ROUTE_COLORS.length],
                 strokeOpacity: 0.6,

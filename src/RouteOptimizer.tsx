@@ -1,20 +1,30 @@
 import React, { useState } from 'react';
 import { useJsApiLoader } from '@react-google-maps/api';
-import type { Location, OptimizedRoute } from './types/route';
+import type { Location, OptimizedRoute, CaseData, CasePriority } from './types/route';
 import { RouteMap } from './components/RouteMap';
 import { RouteDetails } from './components/RouteDetails';
+import { Header } from './components/Header';
 
 const RouteOptimizer: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [optimizedRoutes, setOptimizedRoutes] = useState<OptimizedRoute[]>([]);
   const [error, setError] = useState<string>('');
-  const [vehicleLocations, setVehicleLocations] = useState<Location[]>([]);
+  const [agentLocations, setAgentLocations] = useState<Location[]>([]);
+  const [cases, setCases] = useState<CaseData[]>([]);
 
   const googleMapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 
   const { isLoaded, loadError } = useJsApiLoader({
     googleMapsApiKey: googleMapsApiKey || '',
   });
+
+  const handlePriorityChange = (caseId: string, priority: CasePriority) => {
+    setCases(prevCases => 
+      prevCases.map(c => 
+        c.id === caseId ? { ...c, priority } : c
+      )
+    );
+  };
 
   const optimizeRoutes = async () => {
     setLoading(true);
@@ -23,38 +33,52 @@ const RouteOptimizer: React.FC = () => {
     // Import location generator utilities
     const { 
       generateMultipleLocations, 
-      generateRandomLondonLocation,
       getShiftTimeWindow,
       getLunchBreakConstraint 
     } = await import('./utils/locationGenerator');
 
-    // Generate 100 random delivery locations in London
-    const deliveryLocations = generateMultipleLocations(100);
+    const { generateCasePriority } = await import('./utils/caseGenerator');
+
+    // Generate 200 random case locations in London with priorities
+    const caseLocations = generateMultipleLocations(200);
     
-    const shipments = deliveryLocations.map((location, index) => ({
+    const initialCases: CaseData[] = caseLocations.map((location, index) => ({
+      id: `case-${index + 1}`,
+      postcode: location.postcode,
+      location: { latitude: location.latitude, longitude: location.longitude },
+      priority: generateCasePriority(),
+      status: 'pending',
+      assignedAgentIndex: null, // Will be updated after optimization
+    }));
+
+    const shipments = caseLocations.map((location, index) => ({
       deliveries: [
         {
           arrivalLocation: { 
             latitude: location.latitude, 
             longitude: location.longitude 
           },
-          duration: { seconds: 300 }, // 5 minutes per delivery
-          timeWindows: [getShiftTimeWindow()], // Must be delivered during shift
+          duration: { seconds: 300 }, // 5 minutes per case
+          timeWindows: [getShiftTimeWindow()], // Must be completed during shift
         },
       ],
       label: location.postcode,
     }));
 
-    // Generate 6 vehicles with random London start/end locations
-    const numVehicles = 6;
-    const vehicleLocations = Array.from({ length: numVehicles }, () => 
-      generateRandomLondonLocation()
-    );
+    // Fixed agent start/end locations with specific postcodes
+    const agentStartLocations = [
+      { latitude: 51.4935, longitude: -0.2291, postcode: 'W6 9LI' },
+      { latitude: 51.5154, longitude: -0.1755, postcode: 'W2 3EL' },
+      { latitude: 51.4484, longitude: 0.0285, postcode: 'SE12 4WH' },
+      { latitude: 51.5685, longitude: -0.0141, postcode: 'E10 1PI' },
+      { latitude: 51.4658, longitude: -0.0348, postcode: 'SE14 5NP' },
+      { latitude: 51.4525, longitude: -0.2280, postcode: 'SW15 7GB' },
+    ];
 
     const shiftTimeWindow = getShiftTimeWindow();
     const lunchBreak = getLunchBreakConstraint();
 
-    const vehicles = vehicleLocations.map((location, index) => ({
+    const vehicles = agentStartLocations.map((location, index) => ({
       startLocation: { 
         latitude: location.latitude, 
         longitude: location.longitude 
@@ -63,7 +87,7 @@ const RouteOptimizer: React.FC = () => {
         latitude: location.latitude, 
         longitude: location.longitude 
       },
-      label: `Vehicle ${index + 1} (${location.postcode})`,
+      label: `Agent ${index + 1} (${location.postcode})`,
       startTimeWindows: [shiftTimeWindow], // Shift starts at 9am
       endTimeWindows: [shiftTimeWindow], // Shift ends at 5pm
       breakRule: {
@@ -77,8 +101,8 @@ const RouteOptimizer: React.FC = () => {
       },
     }));
 
-    // Store first vehicle location for map centering
-    setVehicleLocations(vehicles.map(v => v.startLocation));
+    // Store agent locations
+    setAgentLocations(vehicles.map(v => v.startLocation));
 
     const requestBody = {
       model: {
@@ -125,7 +149,24 @@ const RouteOptimizer: React.FC = () => {
         },
       })) || [];
 
+      // Update case assignments based on optimization results
+      const updatedCases = initialCases.map(caseData => {
+        // Find which agent was assigned this case
+        const assignedRouteIndex = routes.findIndex(route => 
+          route.visits.some(visit => {
+            const shipmentIndex = visit.shipmentIndex;
+            return initialCases[shipmentIndex]?.id === caseData.id;
+          })
+        );
+
+        return {
+          ...caseData,
+          assignedAgentIndex: assignedRouteIndex >= 0 ? assignedRouteIndex : null,
+        };
+      });
+
       setOptimizedRoutes(routes);
+      setCases(updatedCases);
     } catch (err) {
       console.error('❌ Error:', err);
       setError(err instanceof Error ? err.message : 'An error occurred');
@@ -136,118 +177,103 @@ const RouteOptimizer: React.FC = () => {
 
   if (loadError) {
     return (
-      <div style={{ padding: '20px' }}>
-        <h1>🚗 Route Optimizer</h1>
-        <div style={{ 
-          padding: '15px',
-          backgroundColor: '#ffebee',
-          borderRadius: '8px',
-          border: '1px solid #ef5350',
-        }}>
-          <strong>❌ Map Loading Error:</strong> 
-          <p>Failed to load Google Maps. Please check your API key.</p>
+      <div className="h-screen flex flex-col overflow-hidden">
+        <Header />
+        
+        {/* Error Content */}
+        <div className="flex-1 flex items-center justify-center p-5">
+          <div className="p-4 bg-red-50 rounded-lg border border-red-400 max-w-[600px]">
+            <strong>❌ Map Loading Error:</strong> 
+            <p>Failed to load Google Maps. Please check your API key.</p>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
-      <h1>🚗 Route Optimizer</h1>
+    <div className="h-screen flex flex-col overflow-hidden">
+      <Header />
       
-      {!googleMapsApiKey && (
-        <div style={{
-          padding: '15px',
-          backgroundColor: '#fff3cd',
-          border: '2px solid #ffc107',
-          borderRadius: '8px',
-          marginBottom: '20px',
-        }}>
-          <strong>⚠️ Google Maps API Key Missing:</strong>
-          <p style={{ margin: '10px 0 0 0' }}>
-            Add <code>VITE_GOOGLE_MAPS_API_KEY</code> to your .env file to enable the map.
-          </p>
+      {/* Two Column Layout - fills remaining space */}
+      <div className="flex flex-1 min-h-0">
+        {/* Left Column - Map */}
+        <div className="flex-1 relative min-w-0 h-full flex flex-col">
+          {!googleMapsApiKey && (
+            <div className="absolute top-5 left-5 right-5 z-10 p-4 bg-yellow-50 border-2 border-yellow-400 rounded-lg">
+              <strong>⚠️ Google Maps API Key Missing:</strong>
+              <p className="mt-2 mb-0">
+                Add <code className="bg-yellow-100 px-1 rounded">VITE_GOOGLE_MAPS_API_KEY</code> to your .env file to enable the map.
+              </p>
+            </div>
+          )}
+
+          {/* Test Scenario and Button - Only show when no routes optimized */}
+          {optimizedRoutes.length === 0 && (
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 text-center bg-white p-8 rounded-lg shadow-md">
+              <div className="mb-5 p-4 bg-blue-50 rounded-lg">
+                <p className="m-0">
+                  <strong>Test Scenario:</strong> 200 random London cases across 6 agents
+                  <br />
+                  <small className="text-gray-600">
+                    • 8-hour shift (9am-5pm) • 45-minute lunch break • 5 minutes per case
+                  </small>
+                  <br />
+                  <small className="text-gray-600 mt-2 block">
+                    • Fixed agent locations: W6 9LI, W2 3EL, SE12 4WH, E10 1PI, SE14 5NP, SW15 7GB
+                  </small>
+                </p>
+              </div>
+
+              <button
+                onClick={optimizeRoutes}
+                disabled={loading}
+                className={`px-6 py-3 text-base font-bold text-white border-none rounded ${
+                  loading 
+                    ? 'bg-gray-400 cursor-not-allowed' 
+                    : 'bg-blue-500 cursor-pointer hover:bg-blue-600'
+                }`}
+              >
+                {loading ? '⏳ Optimizing...' : '🚀 Optimize Cases'}
+              </button>
+            </div>
+          )}
+
+          {error && (
+            <div className="absolute top-5 left-5 right-5 z-10 p-4 bg-red-50 rounded-lg border border-red-400">
+              <strong>❌ Error:</strong> 
+              <div className="mt-2 font-mono text-sm">
+                {error}
+              </div>
+            </div>
+          )}
+
+          {/* Map Section - Fill entire container */}
+          {optimizedRoutes.length > 0 && googleMapsApiKey && isLoaded && (
+            <div className="absolute inset-0">
+              <RouteMap routes={optimizedRoutes} agentLocations={agentLocations} />
+            </div>
+          )}
+
+          {/* Map Loading State */}
+          {optimizedRoutes.length > 0 && googleMapsApiKey && !isLoaded && (
+            <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
+              <p>Loading map...</p>
+            </div>
+          )}
         </div>
-      )}
 
-      <div style={{ marginBottom: '20px', padding: '15px', backgroundColor: '#e3f2fd', borderRadius: '8px' }}>
-        <p style={{ margin: 0 }}>
-          <strong>Test Scenario:</strong> 100 random London deliveries across 6 vehicles
-          <br />
-          <small style={{ color: '#666' }}>
-            • 8-hour shift (9am-5pm) • 45-minute lunch break • 5 minutes per delivery
-          </small>
-        </p>
-      </div>
-
-      <button
-        onClick={optimizeRoutes}
-        disabled={loading}
-        style={{
-          padding: '12px 24px',
-          fontSize: '16px',
-          fontWeight: 'bold',
-          backgroundColor: loading ? '#ccc' : '#4285f4',
-          color: 'white',
-          border: 'none',
-          borderRadius: '4px',
-          cursor: loading ? 'not-allowed' : 'pointer',
-          marginBottom: '20px',
-        }}
-      >
-        {loading ? '⏳ Optimizing...' : '🚀 Optimize Routes'}
-      </button>
-
-      {error && (
-        <div style={{ 
-          padding: '15px',
-          backgroundColor: '#ffebee',
-          borderRadius: '8px',
-          border: '1px solid #ef5350',
-          marginBottom: '20px',
-        }}>
-          <strong>❌ Error:</strong> 
-          <div style={{ marginTop: '8px', fontFamily: 'monospace', fontSize: '14px' }}>
-            {error}
+        {/* Right Column - Tabbed Interface */}
+        {optimizedRoutes.length > 0 && (
+          <div className="w-[440px] min-w-[340px] max-w-[35%] bg-gray-50 border-l border-gray-300 shrink-0 flex flex-col">
+            <RouteDetails 
+              routes={optimizedRoutes} 
+              cases={cases}
+              onPriorityChange={handlePriorityChange}
+            />
           </div>
-        </div>
-      )}
-
-      {/* Map Section */}
-      {optimizedRoutes.length > 0 && googleMapsApiKey && isLoaded && (
-        <RouteMap routes={optimizedRoutes} vehicleLocations={vehicleLocations} />
-      )}
-
-      {/* Map Loading State */}
-      {optimizedRoutes.length > 0 && googleMapsApiKey && !isLoaded && (
-        <div style={{ 
-          padding: '40px', 
-          textAlign: 'center',
-          backgroundColor: '#f5f5f5',
-          borderRadius: '8px',
-          marginBottom: '30px',
-        }}>
-          <p>Loading map...</p>
-        </div>
-      )}
-
-      {/* Route Details */}
-      <RouteDetails routes={optimizedRoutes} />
-
-      {/* Empty State */}
-      {!loading && !error && optimizedRoutes.length === 0 && (
-        <div style={{ 
-          textAlign: 'center', 
-          padding: '60px', 
-          backgroundColor: '#f5f5f5',
-          borderRadius: '8px',
-        }}>
-          <div style={{ fontSize: '48px', marginBottom: '20px' }}>🗺️</div>
-          <p style={{ fontSize: '18px' }}>
-            Click "Optimize Routes" to see the optimized delivery route on the map
-          </p>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 };
