@@ -38,6 +38,7 @@ const RouteOptimizer: React.FC = () => {
     } = await import('./utils/locationGenerator');
 
     const { generateCasePriority } = await import('./utils/caseGenerator');
+    const { getPenaltyCost } = await import('./utils/priorityMapping');
 
     // Generate 200 random case locations in London with priorities
     const caseLocations = generateMultipleLocations(200);
@@ -51,18 +52,21 @@ const RouteOptimizer: React.FC = () => {
       assignedAgentIndex: null, // Will be updated after optimization
     }));
 
-    const shipments = caseLocations.map((location, index) => ({
+    const shipments = initialCases.map((caseData, index) => ({
       deliveries: [
         {
           arrivalLocation: { 
-            latitude: location.latitude, 
-            longitude: location.longitude 
+            latitude: caseData.location.latitude, 
+            longitude: caseData.location.longitude 
           },
           duration: { seconds: 300 }, // 5 minutes per case
           timeWindows: [getShiftTimeWindow()], // Must be completed during shift
         },
       ],
-      label: location.postcode,
+      label: caseData.postcode,
+      // Penalty cost for NOT completing this delivery (based on priority)
+      // High priority = high cost to skip = optimizer will prioritize it
+      penaltyCost: getPenaltyCost(caseData.priority),
     }));
 
     // Fixed agent start/end locations with specific postcodes
@@ -114,6 +118,15 @@ const RouteOptimizer: React.FC = () => {
     try {
       console.log('📤 Sending optimization request...');
       
+      // Log priority distribution
+      const priorityDistribution = {
+        high: initialCases.filter(c => c.priority === 'high').length,
+        medium: initialCases.filter(c => c.priority === 'medium').length,
+        low: initialCases.filter(c => c.priority === 'low').length,
+      };
+      console.log('📊 Priority Distribution:', priorityDistribution);
+      console.log('💰 Penalty Costs: High=£1000, Medium=£300, Low=£100');
+      
       const response = await fetch('http://localhost:3001/api/optimize-routes', {
         method: 'POST',
         headers: {
@@ -151,17 +164,27 @@ const RouteOptimizer: React.FC = () => {
 
       // Update case assignments based on optimization results
       const updatedCases = initialCases.map(caseData => {
-        // Find which agent was assigned this case
-        const assignedRouteIndex = routes.findIndex(route => 
-          route.visits.some(visit => {
-            const shipmentIndex = visit.shipmentIndex;
+        // Find which agent was assigned this case and when
+        let assignedRouteIndex = -1;
+        let deliveryTime: string | { seconds: number } | undefined = undefined;
+
+        for (let routeIdx = 0; routeIdx < routes.length; routeIdx++) {
+          const visit = routes[routeIdx].visits.find(v => {
+            const shipmentIndex = v.shipmentIndex;
             return initialCases[shipmentIndex]?.id === caseData.id;
-          })
-        );
+          });
+
+          if (visit) {
+            assignedRouteIndex = routeIdx;
+            deliveryTime = visit.startTime;
+            break;
+          }
+        }
 
         return {
           ...caseData,
           assignedAgentIndex: assignedRouteIndex >= 0 ? assignedRouteIndex : null,
+          deliveryTime: deliveryTime,
         };
       });
 
@@ -221,6 +244,10 @@ const RouteOptimizer: React.FC = () => {
                   <br />
                   <small className="text-gray-600 mt-2 block">
                     • Fixed agent locations: W6 9LI, W2 3EL, SE12 4WH, E10 1PI, SE14 5NP, SW15 7GB
+                  </small>
+                  <br />
+                  <small className="text-gray-600 mt-1 block">
+                    • Priority-based optimization: High (£1000) | Medium (£300) | Low (£100)
                   </small>
                 </p>
               </div>

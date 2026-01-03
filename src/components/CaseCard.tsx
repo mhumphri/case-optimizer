@@ -1,5 +1,6 @@
 import React from 'react';
 import type { CaseData, CasePriority } from '../types/route';
+import { formatTime } from '../utils/formatters';
 
 interface CaseCardProps {
   caseData: CaseData;
@@ -49,6 +50,16 @@ export const CaseCard: React.FC<CaseCardProps> = ({
           </span>
         </div>
       </div>
+
+      {/* Expected Delivery Time */}
+      {caseData.deliveryTime && (
+        <div className="mb-2">
+          <div className="text-[11px] text-gray-600 mb-1">Expected Delivery</div>
+          <div className="text-xs text-gray-800 font-medium">
+            🕐 {formatTime(caseData.deliveryTime)}
+          </div>
+        </div>
+      )}
 
       {/* Status and Priority Dropdown */}
       <div className="flex gap-2 items-center">
