@@ -1,12 +1,14 @@
 // components/RouteMap.tsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { GoogleMap, Marker, Polyline, InfoWindow } from '@react-google-maps/api';
-import type { Location, OptimizedRoute } from '../types/route';
+import type { Location, OptimizedRoute, CaseData } from '../types/route';
 import { formatTime } from '../utils/formatters';
 
 interface RouteMapProps {
   routes: OptimizedRoute[];
   agentLocations: Location[];
+  unallocatedCases?: Array<CaseData & { unallocatedNumber: number }>;
+  routesVersion?: number; // Add this
 }
 
 const mapContainerStyle = {
@@ -51,11 +53,26 @@ const createAgentMarkerIcon = (color: string): google.maps.Icon => {
   };
 };
 
-export const RouteMap: React.FC<RouteMapProps> = ({ routes, agentLocations }) => {
+export const RouteMap: React.FC<RouteMapProps> = ({ 
+  routes, 
+  agentLocations, 
+  unallocatedCases = [],
+  routesVersion = 0 
+}) => {
   const [selectedMarker, setSelectedMarker] = useState<{
-    routeIndex: number;
-    visitIndex: number;
+    type: 'allocated' | 'unallocated';
+    routeIndex?: number;
+    visitIndex?: number;
+    caseId?: string;
   } | null>(null);
+
+  // Add debugging
+  useEffect(() => {
+    console.log('🗺️ RouteMap - Received unallocated cases:', unallocatedCases.length);
+    unallocatedCases.forEach(c => {
+      console.log(`  - ${c.postcode} (#${c.unallocatedNumber}) - Location:`, c.location);
+    });
+  }, [unallocatedCases]);
 
   const getRoutePath = (route: OptimizedRoute, agentLocation: Location) => {
     const path = [];
@@ -92,8 +109,71 @@ export const RouteMap: React.FC<RouteMapProps> = ({ routes, agentLocations }) =>
     const visitCount = route.visits.length;
     const firstVisit = route.visits[0]?.shipmentLabel || '';
     const lastVisit = route.visits[route.visits.length - 1]?.shipmentLabel || '';
-    return `route-${index}-${visitCount}-${firstVisit}-${lastVisit}-${Date.now()}`;
+    return `route-${index}-${visitCount}-${firstVisit}-${lastVisit}-v${routesVersion}`;
   };
+
+  // Process unallocated markers
+  console.log('🎨 Rendering RouteMap - unallocated cases to render:', unallocatedCases.length);
+  const unallocatedMarkers = unallocatedCases
+    .filter(caseData => {
+      const hasLocation = !!caseData.location;
+      if (!hasLocation) {
+        console.warn(`⚠️ Filtering out ${caseData.postcode} - no location`);
+      }
+      return hasLocation;
+    })
+    .map((caseData) => {
+      console.log(`✏️ Creating marker for unallocated case: ${caseData.postcode} at`, caseData.location);
+      
+      const isSelected =
+        selectedMarker?.type === 'unallocated' &&
+        selectedMarker?.caseId === caseData.id;
+
+      return (
+        <React.Fragment key={`unallocated-${caseData.id}`}>
+          <Marker
+            position={{
+              lat: caseData.location!.latitude,
+              lng: caseData.location!.longitude,
+            }}
+            label={{
+              text: String(caseData.unallocatedNumber),
+              color: '#ffffff',
+              fontSize: '12px',
+              fontWeight: 'bold',
+            }}
+            icon={{
+              path: google.maps.SymbolPath.CIRCLE,
+              scale: 10,
+              fillColor: '#9ca3af', // Gray color for unallocated
+              fillOpacity: 0.9,
+              strokeColor: '#ffffff',
+              strokeWeight: 2,
+            }}
+            onClick={() => setSelectedMarker({ type: 'unallocated', caseId: caseData.id })}
+          />
+          {isSelected && (
+            <InfoWindow
+              position={{
+                lat: caseData.location!.latitude,
+                lng: caseData.location!.longitude,
+              }}
+              onCloseClick={() => setSelectedMarker(null)}
+            >
+              <div>
+                <div>Unallocated Case</div>
+                <div>
+                  Case {caseData.unallocatedNumber}: {caseData.postcode}
+                </div>
+                <div>Priority: {caseData.priority.toUpperCase()}</div>
+              </div>
+            </InfoWindow>
+          )}
+        </React.Fragment>
+      );
+    });
+
+  console.log('📍 Total unallocated markers created:', unallocatedMarkers.length);
 
   return (
     <GoogleMap
@@ -130,6 +210,7 @@ export const RouteMap: React.FC<RouteMapProps> = ({ routes, agentLocations }) =>
 
           const color = ROUTE_COLORS[routeIndex % ROUTE_COLORS.length];
           const isSelected =
+            selectedMarker?.type === 'allocated' &&
             selectedMarker?.routeIndex === routeIndex &&
             selectedMarker?.visitIndex === visitIndex;
 
@@ -154,7 +235,7 @@ export const RouteMap: React.FC<RouteMapProps> = ({ routes, agentLocations }) =>
                   strokeColor: '#ffffff',
                   strokeWeight: 2,
                 }}
-                onClick={() => setSelectedMarker({ routeIndex, visitIndex })}
+                onClick={() => setSelectedMarker({ type: 'allocated', routeIndex, visitIndex })}
               />
               {isSelected && (
                 <InfoWindow
@@ -179,6 +260,9 @@ export const RouteMap: React.FC<RouteMapProps> = ({ routes, agentLocations }) =>
           );
         })
       )}
+
+      {/* Unallocated Case Markers */}
+      {unallocatedMarkers}
 
       {/* Route Polylines for all agents - Only render if route has visits */}
       {routes.map((route, index) => {

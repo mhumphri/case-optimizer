@@ -1,5 +1,5 @@
 // components/RouteDetails.tsx
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import type { OptimizedRoute, CaseData, CasePriority, CaseChange, TimeSlot, AgentSettings, AgentChange } from '../types/route';
 import { AgentCard } from './AgentCard';
 import { CaseCard } from './CaseCard';
@@ -18,6 +18,7 @@ interface RouteDetailsProps {
   onDeleteCaseChange: (caseId: string, changeType: 'priority' | 'slot') => void;
   onDeleteAgentChange: (agentIndex: number) => void;
   isRecalculating: boolean;
+  onUnallocatedCasesUpdate?: (cases: Array<CaseData & { unallocatedNumber: number }>) => void;
 }
 
 // Colors for different agent routes (same as RouteMap)
@@ -49,6 +50,7 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
   onDeleteCaseChange,
   onDeleteAgentChange,
   isRecalculating,
+  onUnallocatedCasesUpdate,
 }) => {
   const [viewMode, setViewMode] = useState<ViewMode>('agents');
   const [caseFilter, setCaseFilter] = useState<CaseFilter>('all');
@@ -78,6 +80,42 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
     // No pending change, so current status is the optimized status
     return agentSettings[agentIndex].active;
   };
+
+  // Create numbered unallocated cases
+  const unallocatedCasesWithNumbers = useMemo(() => {
+    const unallocated = cases.filter(c => c.assignedAgentIndex === null);
+    // Sort by case ID to maintain consistent ordering
+    unallocated.sort((a, b) => a.id.localeCompare(b.id));
+    
+    const numbered = unallocated.map((caseData, index) => ({
+      ...caseData,
+      unallocatedNumber: index + 1,
+    }));
+
+    console.log('📋 RouteDetails - Created unallocated cases:', numbered.length);
+    numbered.forEach(c => {
+      console.log(`  - ${c.postcode} (#${c.unallocatedNumber}) - Has location: ${!!c.location}`);
+    });
+
+    return numbered;
+  }, [cases]);
+
+  // Update parent component with unallocated cases
+  useEffect(() => {
+    if (onUnallocatedCasesUpdate) {
+      console.log('📤 RouteDetails - Sending unallocated cases to parent:', unallocatedCasesWithNumbers.length);
+      onUnallocatedCasesUpdate(unallocatedCasesWithNumbers);
+    }
+  }, [unallocatedCasesWithNumbers, onUnallocatedCasesUpdate]);
+
+  // Create a map for quick lookup of unallocated numbers
+  const unallocatedNumberMap = useMemo(() => {
+    const map = new Map<string, number>();
+    unallocatedCasesWithNumbers.forEach(c => {
+      map.set(c.id, c.unallocatedNumber);
+    });
+    return map;
+  }, [unallocatedCasesWithNumbers]);
 
   // Filter and sort agents based on optimized status
   const filteredAgents = useMemo(() => {
@@ -119,21 +157,35 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
       filtered = cases.filter(c => c.assignedAgentIndex === null);
     }
 
-    // Then sort by agent index (ascending) and delivery time (ascending)
+    // Then sort
     return filtered.sort((a, b) => {
-      // First sort by agent (unallocated at the end)
-      const agentA = a.assignedAgentIndex ?? Infinity;
-      const agentB = b.assignedAgentIndex ?? Infinity;
-      if (agentA !== agentB) {
-        return agentA - agentB;
+      // First sort by allocated vs unallocated
+      const aAllocated = a.assignedAgentIndex !== null;
+      const bAllocated = b.assignedAgentIndex !== null;
+
+      if (aAllocated && !bAllocated) return -1; // Allocated first
+      if (!aAllocated && bAllocated) return 1;
+
+      // Both allocated - sort by agent index and delivery time
+      if (aAllocated && bAllocated) {
+        const agentA = a.assignedAgentIndex!;
+        const agentB = b.assignedAgentIndex!;
+        if (agentA !== agentB) {
+          return agentA - agentB;
+        }
+
+        // Same agent - sort by delivery time
+        const timeA = getTimeInSeconds(a.deliveryTime);
+        const timeB = getTimeInSeconds(b.deliveryTime);
+        return timeA - timeB;
       }
 
-      // Then sort by delivery time
-      const timeA = getTimeInSeconds(a.deliveryTime);
-      const timeB = getTimeInSeconds(b.deliveryTime);
-      return timeA - timeB;
+      // Both unallocated - sort by unallocated number
+      const numA = unallocatedNumberMap.get(a.id) ?? Infinity;
+      const numB = unallocatedNumberMap.get(b.id) ?? Infinity;
+      return numA - numB;
     });
-  }, [cases, caseFilter]);
+  }, [cases, caseFilter, unallocatedNumberMap]);
 
   // Calculate case counts for filter options
   const caseCounts = useMemo(() => {
@@ -247,6 +299,7 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
                 let agentLabel: string | null = null;
                 let agentColor = '#9ca3af'; // Grey for unallocated
                 let routeNumber: number | null = null;
+                let unallocatedNumber: number | null = null;
 
                 if (caseData.assignedAgentIndex !== null) {
                   const route = routes[caseData.assignedAgentIndex];
@@ -264,6 +317,9 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
                       routeNumber = visitIndex + 1; // 1-indexed for display
                     }
                   }
+                } else {
+                  // Unallocated case - get its number
+                  unallocatedNumber = unallocatedNumberMap.get(caseData.id) ?? null;
                 }
 
                 return (
@@ -273,6 +329,7 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
                     agentLabel={agentLabel}
                     agentColor={agentColor}
                     routeNumber={routeNumber}
+                    unallocatedNumber={unallocatedNumber}
                     onPriorityChange={onPriorityChange}
                     onSlotChange={onSlotChange}
                   />
