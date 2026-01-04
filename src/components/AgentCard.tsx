@@ -60,12 +60,7 @@ export const AgentCard: React.FC<AgentCardProps> = ({
   };
   
   return (
-    <div
-      className="rounded-lg p-3 mb-3 bg-white"
-      style={{
-        border: `3px solid ${color}`,
-      }}
-    >
+    <div className="bg-white rounded-lg p-3 mb-3 border border-gray-300 shadow-sm">
       <div className="flex justify-between items-start mb-2">
         <h3 className="m-0 text-sm text-green-800 flex items-center gap-1.5 leading-tight">
           <span 
