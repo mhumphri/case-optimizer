@@ -73,9 +73,18 @@ export const AgentCard: React.FC<AgentCardProps> = ({
           />
           <span>👤 {agentLabel}</span>
         </h3>
-        <span className="px-2 py-0.5 bg-green-500 text-white rounded-xl text-[11px] font-bold shrink-0">
-          {route.visits.length}
-        </span>
+        
+        {/* Active/Inactive Toggle */}
+        <button
+          onClick={() => onSettingsChange(index, { ...settings, active: !settings.active })}
+          className={`px-2 py-1 text-[10px] font-bold border-none rounded cursor-pointer transition-colors ${
+            settings.active 
+              ? 'bg-green-500 text-white hover:bg-green-600' 
+              : 'bg-gray-400 text-white hover:bg-gray-500'
+          }`}
+        >
+          {settings.active ? '✓ Active' : '✕ Inactive'}
+        </button>
       </div>
 
       {/* Agent Settings Controls */}
@@ -89,7 +98,8 @@ export const AgentCard: React.FC<AgentCardProps> = ({
             <select
               value={settings.startTime}
               onChange={(e) => handleStartTimeChange(e.target.value)}
-              className="w-full text-xs border border-gray-300 rounded px-2 py-1 bg-white cursor-pointer"
+              disabled={!settings.active}
+              className="w-full text-xs border border-gray-300 rounded px-2 py-1 bg-white cursor-pointer disabled:bg-gray-100 disabled:cursor-not-allowed"
             >
               {timeOptions.map((time) => (
                 <option 
@@ -108,7 +118,8 @@ export const AgentCard: React.FC<AgentCardProps> = ({
             <select
               value={settings.endTime}
               onChange={(e) => handleEndTimeChange(e.target.value)}
-              className="w-full text-xs border border-gray-300 rounded px-2 py-1 bg-white cursor-pointer"
+              disabled={!settings.active}
+              className="w-full text-xs border border-gray-300 rounded px-2 py-1 bg-white cursor-pointer disabled:bg-gray-100 disabled:cursor-not-allowed"
             >
               {timeOptions.map((time) => (
                 <option 
@@ -129,7 +140,8 @@ export const AgentCard: React.FC<AgentCardProps> = ({
           <select
             value={settings.lunchDuration}
             onChange={(e) => handleLunchChange(Number(e.target.value))}
-            className="w-full text-xs border border-gray-300 rounded px-2 py-1 bg-white cursor-pointer"
+            disabled={!settings.active}
+            className="w-full text-xs border border-gray-300 rounded px-2 py-1 bg-white cursor-pointer disabled:bg-gray-100 disabled:cursor-not-allowed"
           >
             {lunchOptions.map((option) => (
               <option key={option.value} value={option.value}>
@@ -140,48 +152,66 @@ export const AgentCard: React.FC<AgentCardProps> = ({
         </div>
       </div>
       
-      <div className="flex flex-col gap-2 mb-2">
-        <div>
-          <div className="text-[11px] text-gray-600 mb-0.5">📏 Distance</div>
-          <div className="text-base text-blue-700 font-semibold">
-            {(route.metrics.travelDistance / 1000).toFixed(1)} km
-          </div>
-        </div>
-        <div>
-          <div className="text-[11px] text-gray-600 mb-0.5">⏱️ Duration</div>
-          <div className="text-base text-blue-700 font-semibold">
-            {formatDuration(route.metrics.travelDuration)}
-          </div>
-        </div>
-      </div>
-      
-      <button
-        onClick={() => setIsExpanded(!isExpanded)}
-        className="px-3 py-1.5 bg-green-500 text-white border-none rounded cursor-pointer text-xs font-medium w-full hover:bg-green-600"
-      >
-        {isExpanded ? '▼' : '▶'} {route.visits.length} cases
-      </button>
-      
-      {isExpanded && (
+      {/* Route Details - Only show if agent is active */}
+      {settings.active && (
         <>
-          <div className="max-h-[200px] overflow-y-auto border border-gray-300 rounded p-2 bg-gray-50 mt-2">
-            <ol className="leading-tight pl-5 m-0 text-[11px]">
-              {route.visits.map((visit, i) => {
-                const formattedTime = formatTime(visit.startTime);
-                return (
-                  <li key={i} className="mb-1">
-                    <strong>{visit.shipmentLabel}</strong>
-                    {formattedTime && (
-                      <div className="text-gray-600 text-[10px]">
-                        🕐 {formattedTime}
-                      </div>
-                    )}
-                  </li>
-                );
-              })}
-            </ol>
+          <div className="flex flex-col gap-2 mb-2">
+            <div>
+              <div className="text-[11px] text-gray-600 mb-0.5">📦 Cases</div>
+              <div className="text-base text-blue-700 font-semibold">
+                {route.visits.length}
+              </div>
+            </div>
+            <div>
+              <div className="text-[11px] text-gray-600 mb-0.5">📏 Distance</div>
+              <div className="text-base text-blue-700 font-semibold">
+                {(route.metrics.travelDistance / 1000).toFixed(1)} km
+              </div>
+            </div>
+            <div>
+              <div className="text-[11px] text-gray-600 mb-0.5">⏱️ Duration</div>
+              <div className="text-base text-blue-700 font-semibold">
+                {formatDuration(route.metrics.travelDuration)}
+              </div>
+            </div>
           </div>
+          
+          <button
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="px-3 py-1.5 bg-green-500 text-white border-none rounded cursor-pointer text-xs font-medium w-full hover:bg-green-600"
+          >
+            {isExpanded ? '▼' : '▶'} {route.visits.length} cases
+          </button>
+          
+          {isExpanded && (
+            <>
+              <div className="max-h-[200px] overflow-y-auto border border-gray-300 rounded p-2 bg-gray-50 mt-2">
+                <ol className="leading-tight pl-5 m-0 text-[11px]">
+                  {route.visits.map((visit, i) => {
+                    const formattedTime = formatTime(visit.startTime);
+                    return (
+                      <li key={i} className="mb-1">
+                        <strong>{visit.shipmentLabel}</strong>
+                        {formattedTime && (
+                          <div className="text-gray-600 text-[10px]">
+                            🕐 {formattedTime}
+                          </div>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ol>
+              </div>
+            </>
+          )}
         </>
+      )}
+      
+      {/* Inactive Message */}
+      {!settings.active && (
+        <div className="p-3 bg-gray-100 rounded text-center text-xs text-gray-600">
+          Agent is inactive and will not be included in route optimization
+        </div>
       )}
     </div>
   );

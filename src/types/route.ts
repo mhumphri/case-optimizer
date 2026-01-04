@@ -1,7 +1,5 @@
 // types/route.ts
 
-// types/route.ts
-
 export interface Location {
   latitude: number;
   longitude: number;
@@ -67,6 +65,7 @@ export interface AgentSettings {
   startTime: string; // "HH:mm"
   endTime: string;   // "HH:mm"
   lunchDuration: number; // minutes
+  active: boolean; // whether agent is active or inactive
 }
 
 export interface AgentChange {

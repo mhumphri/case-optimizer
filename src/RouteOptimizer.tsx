@@ -1,7 +1,5 @@
 // RouteOptimizer.tsx
 
-// RouteOptimizer.tsx
-
 import React, { useState, useRef } from 'react';
 import { useJsApiLoader } from '@react-google-maps/api';
 import type { 
@@ -33,11 +31,11 @@ const SCENARIOS: Record<ScenarioType, ScenarioConfig> = {
   },
   reduced: {
     name: 'Reduced Scenario',
-    description: '40 cases across 2 agents',
-    caseCount: 40,
+    description: '15 cases across 2 agents',
+    caseCount: 15,
     agentPostcodes: ['W6 9LI', 'W2 3EL'], // Subset of full scenario agents
-    defaultStartTime: '11:00',
-    defaultEndTime: '15:00',
+    defaultStartTime: '11:30',
+    defaultEndTime: '14:00',
     defaultLunchDuration: 45,
   },
 };
@@ -162,8 +160,8 @@ const RouteOptimizer: React.FC = () => {
   };
 
   const handleAgentSettingsChange = (agentIndex: number, newSettings: AgentSettings) => {
-    // Validation: start time cannot be after finish time
-    if (newSettings.startTime >= newSettings.endTime) {
+    // Validation: start time cannot be after finish time (only if active)
+    if (newSettings.active && newSettings.startTime >= newSettings.endTime) {
       return; // Invalid, ignore the change
     }
 
@@ -186,7 +184,8 @@ const RouteOptimizer: React.FC = () => {
       const settingsEqual = 
         originalSettings.startTime === newSettings.startTime &&
         originalSettings.endTime === newSettings.endTime &&
-        originalSettings.lunchDuration === newSettings.lunchDuration;
+        originalSettings.lunchDuration === newSettings.lunchDuration &&
+        originalSettings.active === newSettings.active;
 
       // If same as original, no change to track
       if (settingsEqual) {
@@ -354,6 +353,7 @@ const RouteOptimizer: React.FC = () => {
         startTime: scenario.defaultStartTime,
         endTime: scenario.defaultEndTime,
         lunchDuration: scenario.defaultLunchDuration,
+        active: true, // All agents start as active
       }));
       setAgentSettings(currentAgentSettings);
       originalAgentSettings.current = currentAgentSettings.map(s => ({ ...s }));
@@ -424,42 +424,53 @@ const RouteOptimizer: React.FC = () => {
       return baseShipment;
     });
 
-    // Build vehicles with custom time windows per agent
-    const vehicles = scenario.agentPostcodes.map((postcode, index) => {
-      const settings = currentAgentSettings[index];
-      const shiftTimeWindow = {
-        startTime: { seconds: timeToSeconds(settings.startTime) },
-        endTime: { seconds: timeToSeconds(settings.endTime) },
-      };
-
-      const vehicle: any = {
-        startLocation: agentLocations[index] || { latitude: 51.5074, longitude: -0.1278 },
-        endLocation: agentLocations[index] || { latitude: 51.5074, longitude: -0.1278 },
-        label: `Agent ${index + 1} (${postcode})`,
-        startTimeWindows: [shiftTimeWindow],
-        endTimeWindows: [shiftTimeWindow],
-      };
-
-      // Only add lunch break if duration > 0
-      if (settings.lunchDuration > 0) {
-        // Lunch break starts at midpoint of shift
-        const shiftStart = timeToSeconds(settings.startTime);
-        const shiftEnd = timeToSeconds(settings.endTime);
-        const shiftMidpoint = Math.floor((shiftStart + shiftEnd) / 2);
+    // Build vehicles with custom time windows per agent (only for active agents)
+    const activeAgentIndices: number[] = []; // Track which agents are active
+    const vehicles = scenario.agentPostcodes
+      .map((postcode, index) => {
+        const settings = currentAgentSettings[index];
         
-        vehicle.breakRule = {
-          breakRequests: [
-            {
-              earliestStartTime: { seconds: shiftMidpoint - 1800 }, // 30 min before midpoint
-              latestStartTime: { seconds: shiftMidpoint + 1800 }, // 30 min after midpoint
-              minDuration: { seconds: settings.lunchDuration * 60 },
-            },
-          ],
-        };
-      }
+        // Skip inactive agents
+        if (!settings.active) {
+          return null;
+        }
 
-      return vehicle;
-    });
+        activeAgentIndices.push(index); // Track this agent's original index
+
+        const shiftTimeWindow = {
+          startTime: { seconds: timeToSeconds(settings.startTime) },
+          endTime: { seconds: timeToSeconds(settings.endTime) },
+        };
+
+        const vehicle: any = {
+          startLocation: agentLocations[index] || { latitude: 51.5074, longitude: -0.1278 },
+          endLocation: agentLocations[index] || { latitude: 51.5074, longitude: -0.1278 },
+          label: `Agent ${index + 1} (${postcode})`,
+          startTimeWindows: [shiftTimeWindow],
+          endTimeWindows: [shiftTimeWindow],
+        };
+
+        // Only add lunch break if duration > 0
+        if (settings.lunchDuration > 0) {
+          // Lunch break starts at midpoint of shift
+          const shiftStart = timeToSeconds(settings.startTime);
+          const shiftEnd = timeToSeconds(settings.endTime);
+          const shiftMidpoint = Math.floor((shiftStart + shiftEnd) / 2);
+          
+          vehicle.breakRule = {
+            breakRequests: [
+              {
+                earliestStartTime: { seconds: shiftMidpoint - 1800 }, // 30 min before midpoint
+                latestStartTime: { seconds: shiftMidpoint + 1800 }, // 30 min after midpoint
+                minDuration: { seconds: settings.lunchDuration * 60 },
+              },
+            ],
+          };
+        }
+
+        return vehicle;
+      })
+      .filter(vehicle => vehicle !== null); // Remove null entries (inactive agents)
 
     // Set up time context for London timezone
     const today = new Date();
@@ -505,8 +516,13 @@ const RouteOptimizer: React.FC = () => {
       // Log agent settings
       console.log('👤 Agent Settings:');
       currentAgentSettings.forEach((settings, index) => {
-        console.log(`   Agent ${index + 1}: ${settings.startTime}-${settings.endTime}, ${settings.lunchDuration}min lunch`);
+        if (settings.active) {
+          console.log(`   Agent ${index + 1}: ${settings.startTime}-${settings.endTime}, ${settings.lunchDuration}min lunch [ACTIVE]`);
+        } else {
+          console.log(`   Agent ${index + 1}: [INACTIVE]`);
+        }
       });
+      console.log(`   Active agents: ${activeAgentIndices.length}/${currentAgentSettings.length}`);
       
       const response = await fetch('http://localhost:3001/api/optimize-routes', {
         method: 'POST',
@@ -524,8 +540,8 @@ const RouteOptimizer: React.FC = () => {
       const data = await response.json();
       console.log('✅ API Response:', data);
       
-      const routes: OptimizedRoute[] = data.routes?.map((route: any, index: number) => ({
-        vehicleLabel: route.vehicleLabel || `Vehicle ${index + 1}`,
+      const routes: OptimizedRoute[] = data.routes?.map((route: any, apiRouteIndex: number) => ({
+        vehicleLabel: route.vehicleLabel || `Vehicle ${apiRouteIndex + 1}`,
         visits: route.visits?.map((visit: any) => {
           const shipmentIndex = visit.shipmentIndex;
           const caseData = casesWithCoords[shipmentIndex];
@@ -543,14 +559,44 @@ const RouteOptimizer: React.FC = () => {
         },
       })) || [];
 
+      // Create a full routes array with placeholders for inactive agents
+      // This ensures route indices match agent indices
+      const fullRoutes: OptimizedRoute[] = scenario.agentPostcodes.map((postcode, index) => {
+        const settings = currentAgentSettings[index];
+        
+        if (!settings.active) {
+          // Inactive agent - create empty route placeholder
+          return {
+            vehicleLabel: `Agent ${index + 1} (${postcode})`,
+            visits: [],
+            metrics: {
+              travelDuration: { seconds: 0 },
+              travelDistance: 0,
+            },
+          };
+        }
+        
+        // Active agent - find corresponding route from API response
+        const apiRouteIndex = activeAgentIndices.indexOf(index);
+        return routes[apiRouteIndex] || {
+          vehicleLabel: `Agent ${index + 1} (${postcode})`,
+          visits: [],
+          metrics: {
+            travelDuration: { seconds: 0 },
+            travelDistance: 0,
+          },
+        };
+      });
+
       // Update case assignments based on optimization results
       const updatedCases = initialCases.map(caseData => {
         // Find which agent was assigned this case and when
         let assignedRouteIndex = -1;
         let deliveryTime: string | { seconds: number } | undefined = undefined;
 
-        for (let routeIdx = 0; routeIdx < routes.length; routeIdx++) {
-          const visit = routes[routeIdx].visits.find(v => {
+        // Search through all routes (including inactive placeholders)
+        for (let routeIdx = 0; routeIdx < fullRoutes.length; routeIdx++) {
+          const visit = fullRoutes[routeIdx].visits.find(v => {
             // Match by postcode label
             return v.shipmentLabel === caseData.postcode;
           });
@@ -569,7 +615,7 @@ const RouteOptimizer: React.FC = () => {
         };
       });
 
-      setOptimizedRoutes(routes);
+      setOptimizedRoutes(fullRoutes);
       setCases(updatedCases);
     } catch (err) {
       console.error('❌ Error:', err);
@@ -641,9 +687,9 @@ const RouteOptimizer: React.FC = () => {
                 <div className="border-2 border-green-200 rounded-lg p-5 bg-green-50 hover:bg-green-100 transition-colors">
                   <h3 className="text-lg font-bold text-green-800 mb-3">📉 Reduced Scenario</h3>
                   <ul className="text-left text-sm text-gray-700 space-y-2 mb-4">
-                    <li>✓ <strong>40 cases</strong> across London</li>
+                    <li>✓ <strong>15 cases</strong> across London</li>
                     <li>✓ <strong>2 agents</strong> (W6 9LI, W2 3EL)</li>
-                    <li>✓ Default hours: <strong>11:00-15:00</strong></li>
+                    <li>✓ Default hours: <strong>11:30-14:00</strong></li>
                     <li>✓ 45-minute lunch break</li>
                     <li>✓ Priority-based optimization</li>
                     <li>✓ ~1 in 12 cases with delivery slots</li>

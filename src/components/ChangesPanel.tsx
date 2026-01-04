@@ -87,27 +87,54 @@ export const ChangesPanel: React.FC<ChangesPanelProps> = ({
                   </div>
                   
                   <div>
-                    <div className="text-[10px] text-gray-500 mb-0.5">Work Hours</div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="font-medium text-gray-700">
-                        {change.oldSettings.startTime}-{change.oldSettings.endTime}
-                      </span>
-                      <span className="text-gray-400">→</span>
-                      <span className="font-medium text-blue-600">
-                        {change.newSettings.startTime}-{change.newSettings.endTime}
-                      </span>
-                    </div>
+                    {/* Show active/inactive change if it changed */}
+                    {change.oldSettings.active !== change.newSettings.active && (
+                      <>
+                        <div className="text-[10px] text-gray-500 mb-0.5">Status</div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className={`font-medium ${change.oldSettings.active ? 'text-green-600' : 'text-gray-600'}`}>
+                            {change.oldSettings.active ? 'Active' : 'Inactive'}
+                          </span>
+                          <span className="text-gray-400">→</span>
+                          <span className={`font-medium ${change.newSettings.active ? 'text-green-600' : 'text-gray-600'}`}>
+                            {change.newSettings.active ? 'Active' : 'Inactive'}
+                          </span>
+                        </div>
+                      </>
+                    )}
 
-                    <div className="text-[10px] text-gray-500 mb-0.5">Lunch Break</div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium text-gray-700">
-                        {change.oldSettings.lunchDuration} min
-                      </span>
-                      <span className="text-gray-400">→</span>
-                      <span className="font-medium text-blue-600">
-                        {change.newSettings.lunchDuration} min
-                      </span>
-                    </div>
+                    {/* Show work hours change if it changed */}
+                    {(change.oldSettings.startTime !== change.newSettings.startTime || 
+                      change.oldSettings.endTime !== change.newSettings.endTime) && (
+                      <>
+                        <div className="text-[10px] text-gray-500 mb-0.5">Work Hours</div>
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="font-medium text-gray-700">
+                            {change.oldSettings.startTime}-{change.oldSettings.endTime}
+                          </span>
+                          <span className="text-gray-400">→</span>
+                          <span className="font-medium text-blue-600">
+                            {change.newSettings.startTime}-{change.newSettings.endTime}
+                          </span>
+                        </div>
+                      </>
+                    )}
+
+                    {/* Show lunch break change if it changed */}
+                    {change.oldSettings.lunchDuration !== change.newSettings.lunchDuration && (
+                      <>
+                        <div className="text-[10px] text-gray-500 mb-0.5">Lunch Break</div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-gray-700">
+                            {change.oldSettings.lunchDuration} min
+                          </span>
+                          <span className="text-gray-400">→</span>
+                          <span className="font-medium text-blue-600">
+                            {change.newSettings.lunchDuration} min
+                          </span>
+                        </div>
+                      </>
+                    )}
                   </div>
                   
                   <div className="text-gray-500 text-[10px] mt-1">
