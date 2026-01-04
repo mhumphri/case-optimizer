@@ -22,6 +22,242 @@ const defaultCenter = {
   lng: -0.1278,
 };
 
+// Custom map style - dark and clean
+/*
+const mapStyles: google.maps.MapTypeStyle[] = [
+  {
+    featureType: 'all',
+    elementType: 'labels.text.fill',
+    stylers: [{ color: '#7c7c7c' }]
+  },
+  {
+    featureType: 'all',
+    elementType: 'labels.text.stroke',
+    stylers: [{ visibility: 'off' }]
+  },
+  {
+    featureType: 'administrative',
+    elementType: 'geometry',
+    stylers: [{ visibility: 'off' }]
+  },
+  {
+    featureType: 'administrative.land_parcel',
+    stylers: [{ visibility: 'off' }]
+  },
+  {
+    featureType: 'administrative.neighborhood',
+    stylers: [{ visibility: 'off' }]
+  },
+  {
+    featureType: 'landscape',
+    elementType: 'geometry',
+    stylers: [{ color: '#e8e8e8' }]
+  },
+  {
+    featureType: 'poi',
+    stylers: [{ visibility: 'off' }] // Hide all POI
+  },
+  {
+    featureType: 'road',
+    elementType: 'geometry',
+    stylers: [{ color: '#ffffff' }]
+  },
+  {
+    featureType: 'road',
+    elementType: 'labels.icon',
+    stylers: [{ visibility: 'off' }]
+  },
+  {
+    featureType: 'road.arterial',
+    elementType: 'geometry',
+    stylers: [{ color: '#fefefe' }]
+  },
+  {
+    featureType: 'road.highway',
+    elementType: 'geometry',
+    stylers: [{ color: '#ffffff' }]
+  },
+  {
+    featureType: 'road.highway',
+    elementType: 'geometry.stroke',
+    stylers: [{ color: '#d6d6d6' }]
+  },
+  {
+    featureType: 'road.local',
+    elementType: 'geometry',
+    stylers: [{ color: '#ffffff' }]
+  },
+  {
+    featureType: 'transit',
+    stylers: [{ visibility: 'off' }]
+  },
+  {
+    featureType: 'water',
+    elementType: 'geometry',
+    stylers: [{ color: '#c9d6de' }]
+  }
+];
+
+
+const mapStyles: google.maps.MapTypeStyle[] = [
+  {
+    featureType: 'poi',
+    elementType: 'labels',
+    stylers: [{ visibility: 'off' }] // Hide POI labels but keep parks/landmarks visible
+  },
+  {
+    featureType: 'poi.business',
+    stylers: [{ visibility: 'off' }]
+  },
+  {
+    featureType: 'transit',
+    elementType: 'labels',
+    stylers: [{ visibility: 'off' }]
+  },
+  {
+    featureType: 'road',
+    elementType: 'labels.icon',
+    stylers: [{ visibility: 'off' }]
+  },
+  {
+    featureType: 'landscape',
+    elementType: 'geometry',
+    stylers: [{ color: '#f0f0f0' }]
+  },
+  {
+    featureType: 'water',
+    elementType: 'geometry',
+    stylers: [{ color: '#b3d1ff' }]
+  },
+  {
+    featureType: 'road',
+    elementType: 'geometry',
+    stylers: [{ color: '#ffffff' }]
+  },
+  {
+    featureType: 'road.highway',
+    elementType: 'geometry',
+    stylers: [{ color: '#ffeb99' }]
+  },
+  {
+    featureType: 'poi.park',
+    elementType: 'geometry',
+    stylers: [{ color: '#d4e7d4' }]
+  }
+];
+
+const mapStyles: google.maps.MapTypeStyle[] = [
+  {
+    featureType: 'poi.business',
+    stylers: [{ visibility: 'off' }]
+  },
+  {
+    featureType: 'poi',
+    elementType: 'labels',
+    stylers: [{ visibility: 'off' }]
+  },
+  {
+    featureType: 'transit',
+    elementType: 'labels',
+    stylers: [{ visibility: 'off' }]
+  },
+  {
+    featureType: 'road',
+    elementType: 'labels.icon',
+    stylers: [{ visibility: 'off' }]
+  },
+  {
+    featureType: 'landscape',
+    elementType: 'geometry',
+    stylers: [{ color: '#f5f1e8' }]
+  },
+  {
+    featureType: 'water',
+    elementType: 'geometry',
+    stylers: [{ color: '#a8d8ea' }]
+  },
+  {
+    featureType: 'road',
+    elementType: 'geometry',
+    stylers: [{ color: '#ffffff' }]
+  },
+  {
+    featureType: 'road.highway',
+    elementType: 'geometry',
+    stylers: [{ color: '#ffe4b5' }]
+  },
+  {
+    featureType: 'poi.park',
+    elementType: 'geometry',
+    stylers: [{ color: '#d4e5d4' }]
+  },
+  {
+    featureType: 'all',
+    elementType: 'labels.text.fill',
+    stylers: [{ color: '#6b6b6b' }]
+  },
+  {
+    featureType: 'all',
+    elementType: 'labels.text.stroke',
+    stylers: [{ color: '#ffffff' }, { weight: 3 }]
+  }
+];
+*/
+
+
+
+const mapStyles: google.maps.MapTypeStyle[] = [
+  {
+    featureType: 'poi.business',
+    stylers: [{ visibility: 'off' }]
+  },
+  {
+    featureType: 'poi',
+    elementType: 'labels',
+    stylers: [{ visibility: 'off' }]
+  },
+  {
+    featureType: 'transit',
+    elementType: 'labels',
+    stylers: [{ visibility: 'off' }]
+  },
+  {
+    featureType: 'road',
+    elementType: 'labels.icon',
+    stylers: [{ visibility: 'off' }]
+  },
+  {
+    featureType: 'landscape',
+    elementType: 'geometry',
+    stylers: [{ color: '#e8f4f8' }]
+  },
+  {
+    featureType: 'water',
+    elementType: 'geometry',
+    stylers: [{ color: '#b8d4e8' }]
+  },
+  {
+    featureType: 'road',
+    elementType: 'geometry',
+    stylers: [{ color: '#ffffff' }]
+  },
+  {
+    featureType: 'road.highway',
+    elementType: 'geometry',
+    stylers: [{ color: '#fff4cc' }]
+  },
+  {
+    featureType: 'poi.park',
+    elementType: 'geometry',
+    stylers: [{ color: '#c8e6c9' }]
+  },
+  {
+    featureType: 'all',
+    elementType: 'labels.text.fill',
+    stylers: [{ color: '#5f6368' }]
+  }
+];
+
 // Colors for different agent routes
 const ROUTE_COLORS = [
   '#4285f4', // Blue
@@ -184,14 +420,14 @@ export const RouteMap: React.FC<RouteMapProps> = ({
             }}
             icon={{
               path: google.maps.SymbolPath.CIRCLE,
-              scale: isHighPriority ? 13 : 10, // Larger for high priority
+              scale: isHighPriority ? 13 : 10,
               fillColor: '#6b7280',
               fillOpacity: 0.9,
               strokeColor: '#ffffff',
-              strokeWeight: isHighPriority ? 4 : 2, // Thicker stroke for high priority
+              strokeWeight: isHighPriority ? 4 : 2,
             }}
             onClick={() => setSelectedMarker({ type: 'unallocated', caseId: caseData.id })}
-            zIndex={isHighPriority ? 1000 : 100} // High priority on top
+            zIndex={isHighPriority ? 1000 : 100}
           />
           {/* High priority badge overlay */}
           {isHighPriority && (
@@ -262,10 +498,12 @@ export const RouteMap: React.FC<RouteMapProps> = ({
         mapRef.current = map;
       }}
       options={{
+        styles: mapStyles, // Apply custom styles
         zoomControl: true,
         streetViewControl: false,
         mapTypeControl: false,
         fullscreenControl: true,
+        disableDefaultUI: false,
       }}
     >
       {/* Agent Start Markers */}
@@ -280,6 +518,7 @@ export const RouteMap: React.FC<RouteMapProps> = ({
             }}
             icon={createAgentMarkerIcon(color)}
             title={`Agent ${index + 1} Start`}
+            zIndex={50}
           />
         );
       })}
@@ -312,14 +551,14 @@ export const RouteMap: React.FC<RouteMapProps> = ({
                 }}
                 icon={{
                   path: google.maps.SymbolPath.CIRCLE,
-                  scale: isHighPriority ? 13 : 10, // Larger for high priority
+                  scale: isHighPriority ? 13 : 10,
                   fillColor: color,
                   fillOpacity: 0.9,
                   strokeColor: '#ffffff',
-                  strokeWeight: isHighPriority ? 4 : 2, // Thicker stroke for high priority
+                  strokeWeight: isHighPriority ? 4 : 2,
                 }}
                 onClick={() => setSelectedMarker({ type: 'allocated', routeIndex, visitIndex })}
-                zIndex={isHighPriority ? 1000 : 100} // High priority on top
+                zIndex={isHighPriority ? 1000 : 100}
               />
               {/* High priority badge overlay */}
               {isHighPriority && (

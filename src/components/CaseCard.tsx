@@ -34,44 +34,51 @@ export const CaseCard: React.FC<CaseCardProps> = ({
     <div className="p-4 bg-white border border-gray-300 rounded-lg shadow-sm">
       {/* Case ID/Postcode with Route Number */}
       <div className="flex items-center gap-2 mb-3">
-        {routeNumber !== null && (
-          <div className="relative shrink-0">
-            <div
-              className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold"
-              style={{ 
-                backgroundColor: agentColor,
-                border: isHighPriority ? '3px solid white' : 'none',
-                outline: isHighPriority ? '2px solid currentColor' : 'none',
-                outlineColor: agentColor,
-              }}
-            >
-              {routeNumber}
-            </div>
-            {isHighPriority && (
-              <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-600 rounded-full border-2 border-white flex items-center justify-center text-white text-[8px] font-bold">
-                !
-              </div>
-            )}
-          </div>
-        )}
-        {unallocatedNumber !== null && (
-          <div className="relative shrink-0">
-            <div 
-              className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold bg-gray-600"
-              style={{
-                border: isHighPriority ? '3px solid white' : 'none',
-                outline: isHighPriority ? '2px solid #6b7280' : 'none',
-              }}
-            >
-              {unallocatedNumber}
-            </div>
-            {isHighPriority && (
-              <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-600 rounded-full border-2 border-white flex items-center justify-center text-white text-[8px] font-bold">
-                !
-              </div>
-            )}
-          </div>
-        )}
+{routeNumber !== null && (
+  <div className="relative shrink-0">
+    <div
+      className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold"
+      style={{ 
+        backgroundColor: agentColor,
+        ...(isHighPriority ? {
+          border: '3px solid white',
+          outlineWidth: '2px',
+          outlineStyle: 'solid',
+          outlineColor: agentColor,
+        } : {})
+      }}
+    >
+      {routeNumber}
+    </div>
+    {isHighPriority && (
+      <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-600 rounded-full border-2 border-white flex items-center justify-center text-white text-[8px] font-bold">
+        !
+      </div>
+    )}
+  </div>
+)}
+{unallocatedNumber !== null && (
+  <div className="relative shrink-0">
+    <div 
+      className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold bg-gray-600"
+      style={{
+        ...(isHighPriority ? {
+          border: '3px solid white',
+          outlineWidth: '2px',
+          outlineStyle: 'solid',
+          outlineColor: '#6b7280',
+        } : {})
+      }}
+    >
+      {unallocatedNumber}
+    </div>
+    {isHighPriority && (
+      <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-600 rounded-full border-2 border-white flex items-center justify-center text-white text-[8px] font-bold">
+        !
+      </div>
+    )}
+  </div>
+)}
         <h3 className="text-sm font-semibold text-gray-900">
           📍 {caseData.postcode}
         </h3>
