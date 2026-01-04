@@ -7,8 +7,8 @@ interface CaseCardProps {
   caseData: CaseData;
   agentLabel: string | null;
   agentColor: string;
-  routeNumber: number | null; // Position in agent's route (1, 2, 3...)
-  unallocatedNumber: number | null; // Position in unallocated list
+  routeNumber: number | null;
+  unallocatedNumber: number | null;
   onPriorityChange: (caseId: string, priority: CasePriority) => void;
   onSlotChange: (caseId: string, slot: TimeSlot | undefined) => void;
 }
@@ -28,21 +28,48 @@ export const CaseCard: React.FC<CaseCardProps> = ({
   onPriorityChange,
   onSlotChange,
 }) => {
+  const isHighPriority = caseData.priority === 'high';
+
   return (
     <div className="p-4 bg-white border border-gray-300 rounded-lg shadow-sm">
       {/* Case ID/Postcode with Route Number */}
       <div className="flex items-center gap-2 mb-3">
         {routeNumber !== null && (
-          <div
-            className="shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold"
-            style={{ backgroundColor: agentColor }}
-          >
-            {routeNumber}
+          <div className="relative shrink-0">
+            <div
+              className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold"
+              style={{ 
+                backgroundColor: agentColor,
+                border: isHighPriority ? '3px solid white' : 'none',
+                outline: isHighPriority ? '2px solid currentColor' : 'none',
+                outlineColor: agentColor,
+              }}
+            >
+              {routeNumber}
+            </div>
+            {isHighPriority && (
+              <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-600 rounded-full border-2 border-white flex items-center justify-center text-white text-[8px] font-bold">
+                !
+              </div>
+            )}
           </div>
         )}
         {unallocatedNumber !== null && (
-          <div className="shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold bg-gray-400">
-            {unallocatedNumber}
+          <div className="relative shrink-0">
+            <div 
+              className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold bg-gray-600"
+              style={{
+                border: isHighPriority ? '3px solid white' : 'none',
+                outline: isHighPriority ? '2px solid #6b7280' : 'none',
+              }}
+            >
+              {unallocatedNumber}
+            </div>
+            {isHighPriority && (
+              <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-600 rounded-full border-2 border-white flex items-center justify-center text-white text-[8px] font-bold">
+                !
+              </div>
+            )}
           </div>
         )}
         <h3 className="text-sm font-semibold text-gray-900">

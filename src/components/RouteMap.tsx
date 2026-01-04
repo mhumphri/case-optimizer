@@ -1,14 +1,15 @@
 // components/RouteMap.tsx
-import React, { useState, useEffect } from 'react';
-import { GoogleMap, Marker, Polyline, InfoWindow } from '@react-google-maps/api';
+import React, { useState, useEffect, useRef } from 'react';
+import { GoogleMap, Marker, Polyline, InfoWindow, OverlayView } from '@react-google-maps/api';
 import type { Location, OptimizedRoute, CaseData } from '../types/route';
 import { formatTime } from '../utils/formatters';
 
 interface RouteMapProps {
   routes: OptimizedRoute[];
   agentLocations: Location[];
+  cases: CaseData[];
   unallocatedCases?: Array<CaseData & { unallocatedNumber: number }>;
-  routesVersion?: number; // Add this
+  routesVersion?: number;
 }
 
 const mapContainerStyle = {
@@ -35,7 +36,6 @@ const ROUTE_COLORS = [
 
 // Create a custom marker icon with a person silhouette
 const createAgentMarkerIcon = (color: string): google.maps.Icon => {
-  // SVG for person icon (from lucide-react User icon path)
   const svg = `
     <svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
       <circle cx="20" cy="20" r="18" fill="${color}" stroke="white" stroke-width="2"/>
@@ -55,9 +55,10 @@ const createAgentMarkerIcon = (color: string): google.maps.Icon => {
 
 export const RouteMap: React.FC<RouteMapProps> = ({ 
   routes, 
-  agentLocations, 
+  agentLocations,
+  cases,
   unallocatedCases = [],
-  routesVersion = 0 
+  routesVersion = 0
 }) => {
   const [selectedMarker, setSelectedMarker] = useState<{
     type: 'allocated' | 'unallocated';
@@ -66,13 +67,55 @@ export const RouteMap: React.FC<RouteMapProps> = ({
     caseId?: string;
   } | null>(null);
 
-  // Add debugging
+  const mapRef = useRef<google.maps.Map | null>(null);
+
+  // Fit bounds to show all markers
   useEffect(() => {
-    console.log('🗺️ RouteMap - Received unallocated cases:', unallocatedCases.length);
-    unallocatedCases.forEach(c => {
-      console.log(`  - ${c.postcode} (#${c.unallocatedNumber}) - Location:`, c.location);
+    if (!mapRef.current) return;
+
+    const bounds = new google.maps.LatLngBounds();
+    let hasPoints = false;
+
+    // Add agent locations
+    agentLocations.forEach(location => {
+      bounds.extend({ lat: location.latitude, lng: location.longitude });
+      hasPoints = true;
     });
-  }, [unallocatedCases]);
+
+    // Add all route visit locations
+    routes.forEach(route => {
+      route.visits.forEach(visit => {
+        if (visit.arrivalLocation) {
+          bounds.extend({ 
+            lat: visit.arrivalLocation.latitude, 
+            lng: visit.arrivalLocation.longitude 
+          });
+          hasPoints = true;
+        }
+      });
+    });
+
+    // Add all unallocated case locations
+    unallocatedCases.forEach(caseData => {
+      if (caseData.location) {
+        bounds.extend({ 
+          lat: caseData.location.latitude, 
+          lng: caseData.location.longitude 
+        });
+        hasPoints = true;
+      }
+    });
+
+    // Fit the map to the bounds
+    if (hasPoints) {
+      mapRef.current.fitBounds(bounds, {
+        top: 50,
+        bottom: 50,
+        left: 50,
+        right: 50,
+      });
+    }
+  }, [routes, agentLocations, unallocatedCases, routesVersion]);
 
   const getRoutePath = (route: OptimizedRoute, agentLocation: Location) => {
     const path = [];
@@ -103,8 +146,6 @@ export const RouteMap: React.FC<RouteMapProps> = ({
     return path;
   };
 
-  // Generate a unique key for each polyline based on route content
-  // This ensures old polylines are unmounted when routes change
   const getPolylineKey = (route: OptimizedRoute, index: number) => {
     const visitCount = route.visits.length;
     const firstVisit = route.visits[0]?.shipmentLabel || '';
@@ -112,22 +153,21 @@ export const RouteMap: React.FC<RouteMapProps> = ({
     return `route-${index}-${visitCount}-${firstVisit}-${lastVisit}-v${routesVersion}`;
   };
 
+  // Helper to get case priority by postcode
+  const getCasePriority = (postcode: string): string => {
+    const caseData = cases.find(c => c.postcode === postcode);
+    return caseData?.priority || 'medium';
+  };
+
   // Process unallocated markers
-  console.log('🎨 Rendering RouteMap - unallocated cases to render:', unallocatedCases.length);
   const unallocatedMarkers = unallocatedCases
-    .filter(caseData => {
-      const hasLocation = !!caseData.location;
-      if (!hasLocation) {
-        console.warn(`⚠️ Filtering out ${caseData.postcode} - no location`);
-      }
-      return hasLocation;
-    })
+    .filter(caseData => !!caseData.location)
     .map((caseData) => {
-      console.log(`✏️ Creating marker for unallocated case: ${caseData.postcode} at`, caseData.location);
-      
       const isSelected =
         selectedMarker?.type === 'unallocated' &&
         selectedMarker?.caseId === caseData.id;
+
+      const isHighPriority = caseData.priority === 'high';
 
       return (
         <React.Fragment key={`unallocated-${caseData.id}`}>
@@ -144,14 +184,54 @@ export const RouteMap: React.FC<RouteMapProps> = ({
             }}
             icon={{
               path: google.maps.SymbolPath.CIRCLE,
-              scale: 10,
-              fillColor: '#9ca3af', // Gray color for unallocated
+              scale: isHighPriority ? 13 : 10, // Larger for high priority
+              fillColor: '#6b7280',
               fillOpacity: 0.9,
               strokeColor: '#ffffff',
-              strokeWeight: 2,
+              strokeWeight: isHighPriority ? 4 : 2, // Thicker stroke for high priority
             }}
             onClick={() => setSelectedMarker({ type: 'unallocated', caseId: caseData.id })}
+            zIndex={isHighPriority ? 1000 : 100} // High priority on top
           />
+          {/* High priority badge overlay */}
+          {isHighPriority && (
+            <OverlayView
+              position={{
+                lat: caseData.location!.latitude,
+                lng: caseData.location!.longitude,
+              }}
+              mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
+            >
+              <div
+                style={{
+                  position: 'absolute',
+                  transform: 'translate(-50%, -50%)',
+                  pointerEvents: 'none',
+                }}
+              >
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: '-18px',
+                    right: '-18px',
+                    width: '16px',
+                    height: '16px',
+                    backgroundColor: '#dc2626',
+                    borderRadius: '50%',
+                    border: '2px solid white',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '10px',
+                    fontWeight: 'bold',
+                    color: 'white',
+                  }}
+                >
+                  !
+                </div>
+              </div>
+            </OverlayView>
+          )}
           {isSelected && (
             <InfoWindow
               position={{
@@ -173,13 +253,14 @@ export const RouteMap: React.FC<RouteMapProps> = ({
       );
     });
 
-  console.log('📍 Total unallocated markers created:', unallocatedMarkers.length);
-
   return (
     <GoogleMap
       mapContainerStyle={mapContainerStyle}
       center={defaultCenter}
       zoom={11}
+      onLoad={(map) => {
+        mapRef.current = map;
+      }}
       options={{
         zoomControl: true,
         streetViewControl: false,
@@ -214,6 +295,8 @@ export const RouteMap: React.FC<RouteMapProps> = ({
             selectedMarker?.routeIndex === routeIndex &&
             selectedMarker?.visitIndex === visitIndex;
 
+          const isHighPriority = getCasePriority(visit.shipmentLabel) === 'high';
+
           return (
             <React.Fragment key={`visit-${routeIndex}-${visitIndex}-${visit.shipmentLabel}`}>
               <Marker
@@ -229,14 +312,54 @@ export const RouteMap: React.FC<RouteMapProps> = ({
                 }}
                 icon={{
                   path: google.maps.SymbolPath.CIRCLE,
-                  scale: 10,
+                  scale: isHighPriority ? 13 : 10, // Larger for high priority
                   fillColor: color,
                   fillOpacity: 0.9,
                   strokeColor: '#ffffff',
-                  strokeWeight: 2,
+                  strokeWeight: isHighPriority ? 4 : 2, // Thicker stroke for high priority
                 }}
                 onClick={() => setSelectedMarker({ type: 'allocated', routeIndex, visitIndex })}
+                zIndex={isHighPriority ? 1000 : 100} // High priority on top
               />
+              {/* High priority badge overlay */}
+              {isHighPriority && (
+                <OverlayView
+                  position={{
+                    lat: visit.arrivalLocation.latitude,
+                    lng: visit.arrivalLocation.longitude,
+                  }}
+                  mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
+                >
+                  <div
+                    style={{
+                      position: 'absolute',
+                      transform: 'translate(-50%, -50%)',
+                      pointerEvents: 'none',
+                    }}
+                  >
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: '-18px',
+                        right: '-18px',
+                        width: '16px',
+                        height: '16px',
+                        backgroundColor: '#dc2626',
+                        borderRadius: '50%',
+                        border: '2px solid white',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '10px',
+                        fontWeight: 'bold',
+                        color: 'white',
+                      }}
+                    >
+                      !
+                    </div>
+                  </div>
+                </OverlayView>
+              )}
               {isSelected && (
                 <InfoWindow
                   position={{
@@ -264,14 +387,11 @@ export const RouteMap: React.FC<RouteMapProps> = ({
       {/* Unallocated Case Markers */}
       {unallocatedMarkers}
 
-      {/* Route Polylines for all agents - Only render if route has visits */}
+      {/* Route Polylines for all agents */}
       {routes.map((route, index) => {
-        // Skip if no agent location or no visits
         if (!agentLocations[index] || route.visits.length === 0) return null;
 
         const path = getRoutePath(route, agentLocations[index]);
-        
-        // Skip if path is too short (less than 2 points)
         if (path.length < 2) return null;
 
         return (

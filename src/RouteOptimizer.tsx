@@ -19,8 +19,8 @@ const SCENARIOS: Record<ScenarioType, ScenarioConfig> = {
   },
   reduced: {
     name: 'Reduced Scenario',
-    description: '12 cases across 2 agents',
-    caseCount: 12,
+    description: '10 cases across 2 agents',
+    caseCount: 10,
     agentPostcodes: ['W6 9LI', 'W2 3EL'], // Subset of full scenario agents
     defaultStartTime: '10:30',
     defaultEndTime: '14:00',
@@ -733,6 +733,7 @@ const RouteOptimizer: React.FC = () => {
 <RouteMap
   routes={optimizedRoutes}
   agentLocations={agentLocations}
+  cases={cases}
   unallocatedCases={unallocatedCases}
   routesVersion={routesVersion}
 />
