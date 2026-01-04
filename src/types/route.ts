@@ -1,3 +1,7 @@
+// types/route.ts
+
+// types/route.ts
+
 export interface Location {
   latitude: number;
   longitude: number;
@@ -57,3 +61,33 @@ export interface TimeSlotChange {
 }
 
 export type CaseChange = PriorityChange | TimeSlotChange;
+
+// Agent Settings Types
+export interface AgentSettings {
+  startTime: string; // "HH:mm"
+  endTime: string;   // "HH:mm"
+  lunchDuration: number; // minutes
+}
+
+export interface AgentChange {
+  agentIndex: number;
+  agentLabel: string;
+  oldSettings: AgentSettings;
+  newSettings: AgentSettings;
+  timestamp: Date;
+}
+
+export type Change = CaseChange | AgentChange;
+
+// Scenario Types
+export interface ScenarioConfig {
+  name: string;
+  description: string;
+  caseCount: number;
+  agentPostcodes: string[];
+  defaultStartTime: string;
+  defaultEndTime: string;
+  defaultLunchDuration: number;
+}
+
+export type ScenarioType = 'full' | 'reduced';

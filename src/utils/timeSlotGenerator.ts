@@ -1,3 +1,4 @@
+// utils/timeSlotGenerator.ts
 import type { TimeSlot } from '../types/route';
 
 /**
@@ -53,21 +54,56 @@ export const generateDeliverySlot = (): TimeSlot | undefined => {
 };
 
 /**
- * Generate array of time options in 15-minute increments between 9am-5pm
+ * Generate array of time options in 15-minute increments
+ * @param extended - If true, range is 7am-8pm. If false, range is 9am-5pm
  */
-export const generateTimeOptions = (): string[] => {
+export const generateTimeOptions = (extended: boolean = false): string[] => {
   const options: string[] = [];
   
-  for (let hours = 9; hours <= 17; hours++) {
+  const startHour = extended ? 7 : 9;
+  const endHour = extended ? 20 : 17;
+  
+  for (let hours = startHour; hours <= endHour; hours++) {
     for (let minutes = 0; minutes < 60; minutes += 15) {
-      // Don't add times after 5:00pm
-      if (hours === 17 && minutes > 0) {
+      // Don't add times after end hour
+      if (hours === endHour && minutes > 0) {
         break;
       }
       
       const time = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
       options.push(time);
     }
+  }
+  
+  return options;
+};
+
+/**
+ * Generate lunch duration options from 0 to 120 minutes in 15-minute increments
+ */
+export const generateLunchOptions = (): Array<{ value: number; label: string }> => {
+  const options: Array<{ value: number; label: string }> = [];
+  
+  for (let minutes = 0; minutes <= 120; minutes += 15) {
+    let label: string;
+    
+    if (minutes === 0) {
+      label = 'No lunch break';
+    } else if (minutes === 60) {
+      label = '1 hour';
+    } else if (minutes > 60) {
+      const hours = Math.floor(minutes / 60);
+      const remainingMinutes = minutes % 60;
+      if (remainingMinutes === 0) {
+        label = `${hours} hours`;
+      } else {
+        label = `${hours}h ${remainingMinutes}min`;
+      }
+    } else {
+      label = `${minutes} min`;
+    }
+    
+    options.push({ value: minutes, label });
   }
   
   return options;

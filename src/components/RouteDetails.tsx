@@ -1,5 +1,15 @@
+// components/RouteDetails.tsx
+
 import React, { useState, useMemo } from 'react';
-import type { OptimizedRoute, CaseData, CasePriority, CaseChange, TimeSlot } from '../types/route';
+import type { 
+  OptimizedRoute, 
+  CaseData, 
+  CasePriority, 
+  CaseChange, 
+  TimeSlot, 
+  AgentSettings,
+  AgentChange 
+} from '../types/route';
 import { AgentCard } from './AgentCard';
 import { CaseCard } from './CaseCard';
 import { ChangesPanel } from './ChangesPanel';
@@ -7,11 +17,15 @@ import { ChangesPanel } from './ChangesPanel';
 interface RouteDetailsProps {
   routes: OptimizedRoute[];
   cases: CaseData[];
+  agentSettings: AgentSettings[];
   onPriorityChange: (caseId: string, priority: CasePriority) => void;
   onSlotChange: (caseId: string, slot: TimeSlot | undefined) => void;
-  changes: CaseChange[];
+  onAgentSettingsChange: (agentIndex: number, settings: AgentSettings) => void;
+  caseChanges: CaseChange[];
+  agentChanges: AgentChange[];
   onRecalculate: () => void;
-  onDeleteChange: (caseId: string, changeType: 'priority' | 'slot') => void;
+  onDeleteCaseChange: (caseId: string, changeType: 'priority' | 'slot') => void;
+  onDeleteAgentChange: (agentIndex: number) => void;
   isRecalculating: boolean;
 }
 
@@ -32,12 +46,16 @@ type CaseFilter = 'all' | 'allocated' | 'unallocated';
 
 export const RouteDetails: React.FC<RouteDetailsProps> = ({ 
   routes, 
-  cases, 
+  cases,
+  agentSettings,
   onPriorityChange,
   onSlotChange,
-  changes,
+  onAgentSettingsChange,
+  caseChanges,
+  agentChanges,
   onRecalculate,
-  onDeleteChange,
+  onDeleteCaseChange,
+  onDeleteAgentChange,
   isRecalculating,
 }) => {
   const [viewMode, setViewMode] = useState<ViewMode>('agents');
@@ -153,9 +171,8 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
                 route={route} 
                 index={index}
                 color={ROUTE_COLORS[index % ROUTE_COLORS.length]}
-                cases={cases}
-                onPriorityChange={onPriorityChange}
-                onSlotChange={onSlotChange}
+                settings={agentSettings[index] || { startTime: '09:00', endTime: '17:00', lunchDuration: 45 }}
+                onSettingsChange={onAgentSettingsChange}
               />
             ))}
           </div>
@@ -210,9 +227,11 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
 
       {/* Fixed Changes Panel at Bottom */}
       <ChangesPanel 
-        changes={changes}
+        caseChanges={caseChanges}
+        agentChanges={agentChanges}
         onRecalculate={onRecalculate}
-        onDeleteChange={onDeleteChange}
+        onDeleteCaseChange={onDeleteCaseChange}
+        onDeleteAgentChange={onDeleteAgentChange}
         isRecalculating={isRecalculating}
       />
     </div>

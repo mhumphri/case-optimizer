@@ -1,10 +1,14 @@
+// components/ChangesPanel.tsx
+
 import React, { useState, useEffect } from 'react';
-import type { CaseChange, PriorityChange, TimeSlotChange } from '../types/route';
+import type { CaseChange, PriorityChange, TimeSlotChange, AgentChange } from '../types/route';
 
 interface ChangesPanelProps {
-  changes: CaseChange[];
+  caseChanges: CaseChange[];
+  agentChanges: AgentChange[];
   onRecalculate: () => void;
-  onDeleteChange: (caseId: string, changeType: 'priority' | 'slot') => void;
+  onDeleteCaseChange: (caseId: string, changeType: 'priority' | 'slot') => void;
+  onDeleteAgentChange: (agentIndex: number) => void;
   isRecalculating: boolean;
 }
 
@@ -21,12 +25,16 @@ const PRIORITY_LABELS = {
 };
 
 export const ChangesPanel: React.FC<ChangesPanelProps> = ({ 
-  changes, 
+  caseChanges,
+  agentChanges,
   onRecalculate,
-  onDeleteChange,
+  onDeleteCaseChange,
+  onDeleteAgentChange,
   isRecalculating 
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
+
+  const totalChanges = caseChanges.length + agentChanges.length;
 
   // Auto-collapse when recalculation starts
   useEffect(() => {
@@ -36,19 +44,19 @@ export const ChangesPanel: React.FC<ChangesPanelProps> = ({
   }, [isRecalculating]);
 
   // Show panel if there are changes OR if recalculating
-  if (changes.length === 0 && !isRecalculating) return null;
+  if (totalChanges === 0 && !isRecalculating) return null;
 
   return (
     <div className="border-t border-gray-300 bg-white shrink-0">
       {/* Changes Summary Row */}
       <div className="px-3 py-2 flex justify-between items-center border-b border-gray-200">
         <span className="text-sm font-medium text-gray-700">
-          {isRecalculating && changes.length === 0 
+          {isRecalculating && totalChanges === 0 
             ? 'Recalculating...' 
-            : `${changes.length} change${changes.length !== 1 ? 's' : ''}`
+            : `${totalChanges} change${totalChanges !== 1 ? 's' : ''}`
           }
         </span>
-        {changes.length > 0 && (
+        {totalChanges > 0 && (
           <button
             onClick={() => setIsExpanded(!isExpanded)}
             disabled={isRecalculating}
@@ -64,16 +72,73 @@ export const ChangesPanel: React.FC<ChangesPanelProps> = ({
       </div>
 
       {/* Expandable Changes List */}
-      {isExpanded && changes.length > 0 && (
+      {isExpanded && totalChanges > 0 && (
         <div className="max-h-[200px] overflow-y-auto border-b border-gray-200">
           <div className="p-3">
-            {changes.map((change, index) => {
+            {/* Agent Changes */}
+            {agentChanges.map((change, index) => (
+              <div 
+                key={`agent-${index}`}
+                className="mb-2 last:mb-0 p-2 bg-blue-50 rounded text-xs border border-blue-200 flex justify-between items-start gap-2"
+              >
+                <div className="flex-1">
+                  <div className="font-semibold text-gray-800 mb-1">
+                    👤 {change.agentLabel}
+                  </div>
+                  
+                  <div>
+                    <div className="text-[10px] text-gray-500 mb-0.5">Work Hours</div>
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="font-medium text-gray-700">
+                        {change.oldSettings.startTime}-{change.oldSettings.endTime}
+                      </span>
+                      <span className="text-gray-400">→</span>
+                      <span className="font-medium text-blue-600">
+                        {change.newSettings.startTime}-{change.newSettings.endTime}
+                      </span>
+                    </div>
+
+                    <div className="text-[10px] text-gray-500 mb-0.5">Lunch Break</div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-gray-700">
+                        {change.oldSettings.lunchDuration} min
+                      </span>
+                      <span className="text-gray-400">→</span>
+                      <span className="font-medium text-blue-600">
+                        {change.newSettings.lunchDuration} min
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <div className="text-gray-500 text-[10px] mt-1">
+                    {change.timestamp.toLocaleTimeString()}
+                  </div>
+                </div>
+                
+                {/* Delete Button */}
+                <button
+                  onClick={() => onDeleteAgentChange(change.agentIndex)}
+                  disabled={isRecalculating}
+                  className={`shrink-0 p-1.5 rounded border-none transition-colors ${
+                    isRecalculating
+                      ? 'text-gray-300 cursor-not-allowed bg-transparent'
+                      : 'text-gray-500 hover:text-red-600 hover:bg-red-50 cursor-pointer bg-transparent'
+                  }`}
+                  title={isRecalculating ? 'Cannot delete while recalculating' : 'Restore original settings'}
+                >
+                  🗑️
+                </button>
+              </div>
+            ))}
+
+            {/* Case Changes */}
+            {caseChanges.map((change, index) => {
               // Type guard for PriorityChange
               const isPriorityChange = 'oldPriority' in change;
               
               return (
                 <div 
-                  key={index}
+                  key={`case-${index}`}
                   className="mb-2 last:mb-0 p-2 bg-gray-50 rounded text-xs border border-gray-200 flex justify-between items-start gap-2"
                 >
                   <div className="flex-1">
@@ -124,7 +189,7 @@ export const ChangesPanel: React.FC<ChangesPanelProps> = ({
                   
                   {/* Delete Button */}
                   <button
-                    onClick={() => onDeleteChange(change.caseId, isPriorityChange ? 'priority' : 'slot')}
+                    onClick={() => onDeleteCaseChange(change.caseId, isPriorityChange ? 'priority' : 'slot')}
                     disabled={isRecalculating}
                     className={`shrink-0 p-1.5 rounded border-none transition-colors ${
                       isRecalculating

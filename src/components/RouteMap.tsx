@@ -1,3 +1,4 @@
+// components/RouteMap.tsx
 import React, { useState } from 'react';
 import { GoogleMap, Marker, Polyline, InfoWindow } from '@react-google-maps/api';
 import type { Location, OptimizedRoute } from '../types/route';
@@ -64,17 +65,29 @@ export const RouteMap: React.FC<RouteMapProps> = ({ routes, agentLocations }) =>
         zoom={10}
       >
         {/* Agent Start Markers */}
-        {agentLocations.map((location, index) => (
-          <Marker
-            key={`agent-${index}`}
-            position={{ lat: location.latitude, lng: location.longitude }}
-            label={{
-              text: '👤',
-              fontSize: '20px',
-            }}
-            title={routes[index]?.vehicleLabel || `Agent ${index + 1}`}
-          />
-        ))}
+        {agentLocations.map((location, index) => {
+          const color = ROUTE_COLORS[index % ROUTE_COLORS.length];
+          
+          return (
+            <Marker
+              key={`agent-${index}`}
+              position={{ lat: location.latitude, lng: location.longitude }}
+              label={{
+                text: '👤',
+                fontSize: '16px',
+              }}
+              icon={{
+                path: window.google.maps.SymbolPath.CIRCLE,
+                scale: 14,
+                fillColor: 'white',
+                fillOpacity: 1,
+                strokeColor: color,
+                strokeWeight: 3,
+              }}
+              title={routes[index]?.vehicleLabel || `Agent ${index + 1}`}
+            />
+          );
+        })}
 
         {/* Case Location Markers for all routes */}
         {routes.map((route, routeIndex) => 
@@ -98,7 +111,7 @@ export const RouteMap: React.FC<RouteMapProps> = ({ routes, agentLocations }) =>
                 }}
                 icon={{
                   path: window.google.maps.SymbolPath.CIRCLE,
-                  scale: 8,
+                  scale: 12,
                   fillColor: color,
                   fillOpacity: 0.8,
                   strokeColor: 'white',
