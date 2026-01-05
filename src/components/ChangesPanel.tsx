@@ -47,9 +47,9 @@ export const ChangesPanel: React.FC<ChangesPanelProps> = ({
   if (totalChanges === 0 && !isRecalculating) return null;
 
   return (
-   <div className="border border-x-0 border-b-0 border-gray-300 bg-white shrink-0 rounded-t-xl">
+    <div className="border border-x-0 border-b-0 border-gray-300 bg-white shrink-0 rounded-t-xl flex flex-col max-h-full">
       {/* Changes Summary Row */}
-      <div className="px-3 py-3 flex justify-between items-center border-b border-gray-200">
+      <div className="px-3 py-3 flex justify-between items-center border-b border-gray-200 shrink-0">
         <span className="text-sm font-medium text-gray-700">
           {isRecalculating && totalChanges === 0 
             ? 'Recalculating...' 
@@ -71,9 +71,12 @@ export const ChangesPanel: React.FC<ChangesPanelProps> = ({
         )}
       </div>
 
-      {/* Expandable Changes List */}
+      {/* Expandable Changes List - Scrollable with flex-1 */}
       {isExpanded && totalChanges > 0 && (
-        <div className="max-h-[200px] overflow-y-auto border-b border-gray-200">
+        <div 
+          className="flex-1 overflow-y-auto border-b border-gray-200 min-h-0"
+          style={{ marginTop: '2px' }} // 2px gap from the summary row
+        >
           <div className="p-3">
             {/* Agent Changes */}
             {agentChanges.map((change, index) => (
@@ -234,21 +237,20 @@ export const ChangesPanel: React.FC<ChangesPanelProps> = ({
         </div>
       )}
 
-      {/* Recalculate Button */}
-
-<div className="p-3">
-  <button
-    onClick={onRecalculate}
-    disabled={isRecalculating}
-    className={`w-full px-4 py-3 text-base font-semibold border-none rounded cursor-pointer ${
-      isRecalculating
-        ? 'bg-gray-400 text-white cursor-not-allowed'
-        : 'bg-emerald-500 text-white hover:bg-emerald-600'
-    }`}
-  >
-    {isRecalculating ? '◐ Recalculating Routes...' : '↻ Recalculate Routes'}
-  </button>
-</div>
+      {/* Recalculate Button - Always visible at bottom */}
+      <div className="p-3 shrink-0">
+        <button
+          onClick={onRecalculate}
+          disabled={isRecalculating}
+          className={`w-full px-4 py-3 text-base font-semibold border-none rounded cursor-pointer ${
+            isRecalculating
+              ? 'bg-gray-400 text-white cursor-not-allowed'
+              : 'bg-emerald-500 text-white hover:bg-emerald-600'
+          }`}
+        >
+          {isRecalculating ? '◐ Recalculating Routes...' : '↻ Recalculate Routes'}
+        </button>
+      </div>
     </div>
   );
 };

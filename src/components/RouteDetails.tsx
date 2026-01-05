@@ -204,92 +204,92 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
     <div className="flex flex-col h-full">
       {/* Fixed Tab Bar */}
       <div className="shrink-0 p-4 border-b border-gray-200 bg-white">
-{/* Tabs */}
-<div className="flex gap-2 mb-4">
-<button
-  onClick={() => setViewMode('agents')}
-  className={`flex-1 px-4 py-2 text-sm font-semibold border-none rounded cursor-pointer transition-colors flex items-center justify-center gap-2 ${
-    viewMode === 'agents'
-      ? 'bg-blue-500 text-white'
-      : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
-  }`}
->
-  <svg 
-    width="16" 
-    height="16" 
-    viewBox="0 0 24 24" 
-    fill="currentColor"
-  >
-    {/* Head - larger and positioned higher */}
-    <circle cx="12" cy="7" r="5.5" />
-    {/* Body - wider and extends to bottom */}
-    <path d="M2 22 Q 2 15, 6 12.5 L 18 12.5 Q 22 15, 22 22 Z" />
-  </svg>
-  <span>Agents</span>
-</button>
-  <button
-    onClick={() => setViewMode('cases')}
-    className={`flex-1 px-4 py-2 text-sm font-semibold border-none rounded cursor-pointer transition-colors flex items-center justify-center gap-2 ${
-      viewMode === 'cases'
-        ? 'bg-blue-500 text-white'
-        : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
-    }`}
-  >
-    <svg 
-      width="16" 
-      height="16" 
-      viewBox="0 0 24 24" 
-      fill="none" 
-      stroke="currentColor" 
-      strokeWidth="2" 
-      strokeLinecap="round" 
-      strokeLinejoin="round"
-    >
-      <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
-      <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
-    </svg>
-    <span>Cases</span>
-  </button>
-</div>
+        {/* Tabs */}
+        <div className="flex gap-2 mb-4">
+          <button
+            onClick={() => setViewMode('agents')}
+            className={`flex-1 px-4 py-2 text-sm font-semibold border-none rounded cursor-pointer transition-colors flex items-center justify-center gap-2 ${
+              viewMode === 'agents'
+                ? 'bg-blue-500 text-white'
+                : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+            }`}
+          >
+            <svg 
+              width="16" 
+              height="16" 
+              viewBox="0 0 24 24" 
+              fill="currentColor"
+            >
+              {/* Head - larger and positioned higher */}
+              <circle cx="12" cy="7" r="5.5" />
+              {/* Body - wider and extends to bottom */}
+              <path d="M2 22 Q 2 15, 6 12.5 L 18 12.5 Q 22 15, 22 22 Z" />
+            </svg>
+            <span>Agents</span>
+          </button>
+          <button
+            onClick={() => setViewMode('cases')}
+            className={`flex-1 px-4 py-2 text-sm font-semibold border-none rounded cursor-pointer transition-colors flex items-center justify-center gap-2 ${
+              viewMode === 'cases'
+                ? 'bg-blue-500 text-white'
+                : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+            }`}
+          >
+            <svg 
+              width="16" 
+              height="16" 
+              viewBox="0 0 24 24" 
+              fill="none" 
+              stroke="currentColor" 
+              strokeWidth="2" 
+              strokeLinecap="round" 
+              strokeLinejoin="round"
+            >
+              <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
+              <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
+            </svg>
+            <span>Cases</span>
+          </button>
+        </div>
 
-{/* Filter Dropdown - Show based on view mode */}
-{viewMode === 'agents' && (
-  <div>
-    <label className="block text-xs font-medium text-gray-700 mb-1">
-      Filter Agents
-    </label>
-    <select
-      value={agentFilter}
-      onChange={(e) => setAgentFilter(e.target.value as AgentFilter)}
-      className="w-full text-sm border border-gray-300 rounded px-3 py-2 bg-white cursor-pointer"
-    >
-      <option value="all">All Agents ({agentCounts.all})</option>
-      <option value="active">Active Only ({agentCounts.active})</option>
-      <option value="inactive">Inactive Only ({agentCounts.inactive})</option>
-    </select>
-  </div>
-)}
+        {/* Filter Dropdown - Show based on view mode */}
+        {viewMode === 'agents' && (
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">
+              Filter Agents
+            </label>
+            <select
+              value={agentFilter}
+              onChange={(e) => setAgentFilter(e.target.value as AgentFilter)}
+              className="w-full text-sm border border-gray-300 rounded px-3 py-2 bg-white cursor-pointer"
+            >
+              <option value="all">All Agents ({agentCounts.all})</option>
+              <option value="active">Active Only ({agentCounts.active})</option>
+              <option value="inactive">Inactive Only ({agentCounts.inactive})</option>
+            </select>
+          </div>
+        )}
 
-{viewMode === 'cases' && (
-  <div>
-    <label className="block text-xs font-medium text-gray-700 mb-1">
-      Filter Cases
-    </label>
-    <select
-      value={caseFilter}
-      onChange={(e) => setCaseFilter(e.target.value as CaseFilter)}
-      className="w-full text-sm border border-gray-300 rounded px-3 py-2 bg-white cursor-pointer"
-    >
-      <option value="all">All Cases ({caseCounts.all})</option>
-      <option value="allocated">Allocated Only ({caseCounts.allocated})</option>
-      <option value="unallocated">Unallocated Only ({caseCounts.unallocated})</option>
-    </select>
-  </div>
-)}
+        {viewMode === 'cases' && (
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">
+              Filter Cases
+            </label>
+            <select
+              value={caseFilter}
+              onChange={(e) => setCaseFilter(e.target.value as CaseFilter)}
+              className="w-full text-sm border border-gray-300 rounded px-3 py-2 bg-white cursor-pointer"
+            >
+              <option value="all">All Cases ({caseCounts.all})</option>
+              <option value="allocated">Allocated Only ({caseCounts.allocated})</option>
+              <option value="unallocated">Unallocated Only ({caseCounts.unallocated})</option>
+            </select>
+          </div>
+        )}
       </div>
 
-      {/* Scrollable Content Area */}
-      <div className="flex-1 overflow-y-auto p-4">
+      {/* Scrollable Content Area - Added min-h-0 for proper flex shrinking */}
+      <div className="flex-1 min-h-0 overflow-y-auto p-4">
         {viewMode === 'agents' ? (
           // Agents View
           <div className="space-y-4">
@@ -298,19 +298,19 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
                 No agents match the current filter
               </div>
             ) : (
-filteredAgents.map(({ route, index }) => (
-  <AgentCard
-    key={`agent-${index}`}
-    route={route}
-    index={index}
-    color={ROUTE_COLORS[index % ROUTE_COLORS.length]}
-    settings={agentSettings[index]}
-    cases={cases}
-    onSettingsChange={onAgentSettingsChange}
-    onPriorityChange={onPriorityChange}  // Add this prop
-    onSlotChange={onSlotChange}          // Add this prop
-  />
-))
+              filteredAgents.map(({ route, index }) => (
+                <AgentCard
+                  key={`agent-${index}`}
+                  route={route}
+                  index={index}
+                  color={ROUTE_COLORS[index % ROUTE_COLORS.length]}
+                  settings={agentSettings[index]}
+                  cases={cases}
+                  onSettingsChange={onAgentSettingsChange}
+                  onPriorityChange={onPriorityChange}
+                  onSlotChange={onSlotChange}
+                />
+              ))
             )}
           </div>
         ) : (
@@ -368,7 +368,10 @@ filteredAgents.map(({ route, index }) => (
       </div>
 
       {/* Fixed Changes Panel at Bottom */}
-      <div className="shrink-0  bg-white">
+      <div 
+        className="bg-white shrink-0"
+        style={{ maxHeight: '50vh' }} // Limit panel to 50% of viewport to keep button visible
+      >
         <ChangesPanel
           caseChanges={caseChanges}
           agentChanges={agentChanges}
