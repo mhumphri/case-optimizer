@@ -19,6 +19,34 @@ const PRIORITY_COLORS = {
   low: 'bg-green-100 text-green-800 border-green-300',
 };
 
+// Format time without seconds
+const formatTimeWithoutSeconds = (timestamp: string | { seconds: number } | any): string => {
+  try {
+    let date: Date;
+    
+    if (timestamp && typeof timestamp === 'object' && 'seconds' in timestamp) {
+      date = new Date(timestamp.seconds * 1000);
+    } else if (typeof timestamp === 'string') {
+      date = new Date(timestamp);
+    } else {
+      return '';
+    }
+    
+    if (isNaN(date.getTime())) {
+      return '';
+    }
+    
+    return date.toLocaleTimeString('en-GB', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      hour12: false 
+    });
+  } catch (error) {
+    console.error('Error formatting time:', error);
+    return '';
+  }
+};
+
 export const CaseCard: React.FC<CaseCardProps> = ({
   caseData,
   agentLabel,
@@ -30,110 +58,91 @@ export const CaseCard: React.FC<CaseCardProps> = ({
 }) => {
   const isHighPriority = caseData.priority === 'high';
 
+  // Format agent label - extract just "Agent X" from "Agent X (postcode)"
+  const formattedAgentLabel = agentLabel 
+    ? agentLabel.split(' (')[0] // Remove postcode part
+    : 'Unallocated';
+
   return (
-    <div className="p-4 bg-white border border-gray-300 rounded-lg shadow-sm">
-      {/* Case ID/Postcode with Route Number */}
-      <div className="flex items-center gap-2 mb-3">
-{routeNumber !== null && (
-  <div className="relative shrink-0">
-    <div
-      className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold"
-      style={{ 
-        backgroundColor: agentColor,
-        ...(isHighPriority ? {
-          border: '3px solid white',
-          outlineWidth: '2px',
-          outlineStyle: 'solid',
-          outlineColor: agentColor,
-        } : {})
-      }}
-    >
-      {routeNumber}
-    </div>
-    {isHighPriority && (
-      <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-600 rounded-full border-2 border-white flex items-center justify-center text-white text-[8px] font-bold">
-        !
-      </div>
-    )}
-  </div>
-)}
-{unallocatedNumber !== null && (
-  <div className="relative shrink-0">
-    <div 
-      className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold bg-gray-600"
-      style={{
-        ...(isHighPriority ? {
-          border: '3px solid white',
-          outlineWidth: '2px',
-          outlineStyle: 'solid',
-          outlineColor: '#6b7280',
-        } : {})
-      }}
-    >
-      {unallocatedNumber}
-    </div>
-    {isHighPriority && (
-      <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-600 rounded-full border-2 border-white flex items-center justify-center text-white text-[8px] font-bold">
-        !
-      </div>
-    )}
-  </div>
-)}
-        <h3 className="text-sm font-semibold text-gray-900">
+    <div className={`p-4 bg-white border-2 rounded-lg shadow-sm ${
+      isHighPriority ? 'border-red-500' : 'border-gray-300'
+    }`}>
+      {/* Header Row: Circle + Agent Label (LHS) and Postcode (RHS) */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          {/* Route/Unallocated Number Circle */}
+          {routeNumber !== null && (
+            <div className="relative shrink-0">
+              <div
+                className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold"
+                style={{ 
+                  backgroundColor: agentColor,
+                  ...(isHighPriority ? {
+                    border: '3px solid white',
+                    outlineWidth: '2px',
+                    outlineStyle: 'solid',
+                    outlineColor: agentColor,
+                  } : {})
+                }}
+              >
+                {routeNumber}
+              </div>
+              {isHighPriority && (
+                <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-600 rounded-full border-2 border-white flex items-center justify-center text-white text-[8px] font-bold">
+                  !
+                </div>
+              )}
+            </div>
+          )}
+          {unallocatedNumber !== null && (
+            <div className="relative shrink-0">
+              <div 
+                className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold bg-gray-600"
+                style={{
+                  ...(isHighPriority ? {
+                    border: '3px solid white',
+                    outlineWidth: '2px',
+                    outlineStyle: 'solid',
+                    outlineColor: '#6b7280',
+                  } : {})
+                }}
+              >
+                {unallocatedNumber}
+              </div>
+              {isHighPriority && (
+                <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-600 rounded-full border-2 border-white flex items-center justify-center text-white text-[8px] font-bold">
+                  !
+                </div>
+              )}
+            </div>
+          )}
+          
+          {/* Agent Label - regular color */}
+          <span className="text-sm font-semibold text-gray-900">
+            {formattedAgentLabel}
+          </span>
+        </div>
+
+        {/* Postcode on RHS */}
+        <div className="text-sm font-semibold text-gray-900">
           📍 {caseData.postcode}
-        </h3>
-        <span
-          className={`ml-auto px-2 py-0.5 text-[10px] font-bold border rounded ${
-            PRIORITY_COLORS[caseData.priority]
-          }`}
-        >
-          {caseData.priority.toUpperCase()}
-        </span>
-      </div>
-
-      {/* Agent Assignment */}
-      <div className="mb-2">
-        <label className="block text-xs font-medium text-gray-600 mb-1">
-          Assigned Agent
-        </label>
-        <div
-          className="text-xs font-medium px-2 py-1 rounded inline-block"
-          style={{
-            backgroundColor: agentLabel ? `${agentColor}20` : '#f3f4f6',
-            color: agentLabel ? agentColor : '#6b7280',
-          }}
-        >
-          {agentLabel || 'Unallocated'}
         </div>
       </div>
 
-      {/* Expected Delivery Time */}
-      {caseData.deliveryTime && (
-        <div className="mb-2">
+      {/* Arrival Time and Priority Row */}
+      <div className="grid grid-cols-2 gap-2 mb-3">
+        <div className="flex flex-col justify-center">
           <label className="block text-xs font-medium text-gray-600 mb-1">
-            Expected Delivery
+            Arrival Time
           </label>
           <div className="text-xs text-gray-700">
-            🕐 {formatTime(caseData.deliveryTime)}
-          </div>
-        </div>
-      )}
-
-      {/* Delivery Time Slot */}
-      <TimeSlotInput
-        caseId={caseData.id}
-        deliverySlot={caseData.deliverySlot}
-        onSlotChange={onSlotChange}
-      />
-
-      {/* Status and Priority Dropdown */}
-      <div className="grid grid-cols-2 gap-2 mt-3">
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">
-            Status
-          </label>
-          <div className="text-xs text-gray-700">
-            {caseData.status === 'complete' ? '✓ Complete' : '⏱ Pending'}
+            {caseData.deliveryTime ? (
+              <>
+                🕐 {formatTimeWithoutSeconds(caseData.deliveryTime)} ({caseData.status === 'complete' ? 'complete' : 'pending'})
+              </>
+            ) : (
+              <span className="text-gray-400">Not scheduled</span>
+            )}
           </div>
         </div>
         <div>
@@ -153,6 +162,13 @@ export const CaseCard: React.FC<CaseCardProps> = ({
           </select>
         </div>
       </div>
+
+      {/* Time Slot - moved to bottom */}
+      <TimeSlotInput
+        caseId={caseData.id}
+        deliverySlot={caseData.deliverySlot}
+        onSlotChange={onSlotChange}
+      />
     </div>
   );
 };

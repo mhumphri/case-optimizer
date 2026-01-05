@@ -41,7 +41,7 @@ export const TimeSlotInput: React.FC<TimeSlotInputProps> = ({
   };
 
   const handleEndTimeChange = (newEndTime: string) => {
-     console.log("handleEndTimeChange")
+    console.log("handleEndTimeChange")
     if (deliverySlot) {
       onSlotChange(caseId, {
         ...deliverySlot,
@@ -53,10 +53,12 @@ export const TimeSlotInput: React.FC<TimeSlotInputProps> = ({
   if (!showInput) {
     return (
       <div className="mb-2">
-        <div className="text-[11px] text-gray-600 mb-1">Delivery Slot</div>
+        <label className="block text-xs font-medium text-gray-600 mb-1">
+          Time Slot
+        </label>
         <button
           onClick={handleAddSlot}
-          className="px-2 py-1 text-xs bg-blue-50 text-blue-600 border border-blue-200 rounded cursor-pointer hover:bg-blue-100"
+          className="text-xs text-blue-600 hover:text-blue-700 font-medium"
         >
           + Add Slot
         </button>
@@ -66,19 +68,20 @@ export const TimeSlotInput: React.FC<TimeSlotInputProps> = ({
 
   return (
     <div className="mb-2">
-      <div className="flex justify-between items-center mb-1">
-        <div className="text-[11px] text-gray-600">Delivery Slot</div>
+      <div className="flex items-center justify-between mb-1">
+        <label className="block text-xs font-medium text-gray-600">
+          Time Slot
+        </label>
         <button
           onClick={handleRemoveSlot}
-          className="text-[10px] text-red-600 hover:text-red-700 cursor-pointer border-none bg-transparent p-0"
-          title="Remove delivery slot"
+          className="text-xs text-red-600 hover:text-red-700 font-medium"
         >
           ✕ Remove
         </button>
       </div>
-      <div className="flex gap-2 items-center">
+      <div className="flex items-center gap-2">
         <select
-          value={deliverySlot?.startTime || '09:00'}
+          value={deliverySlot?.startTime}
           onChange={(e) => handleStartTimeChange(e.target.value)}
           className="flex-1 text-xs border border-gray-300 rounded px-2 py-1 bg-white cursor-pointer"
         >
@@ -90,7 +93,7 @@ export const TimeSlotInput: React.FC<TimeSlotInputProps> = ({
         </select>
         <span className="text-xs text-gray-500">-</span>
         <select
-          value={deliverySlot?.endTime || '17:00'}
+          value={deliverySlot?.endTime}
           onChange={(e) => handleEndTimeChange(e.target.value)}
           className="flex-1 text-xs border border-gray-300 rounded px-2 py-1 bg-white cursor-pointer"
         >
