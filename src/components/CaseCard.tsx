@@ -64,11 +64,33 @@ export const CaseCard: React.FC<CaseCardProps> = ({
     : 'Unallocated';
 
   return (
-    <div className={`p-4 bg-white border-2 rounded-lg shadow-sm ${
-      isHighPriority ? 'border-red-500' : 'border-gray-300'
+    <div className={`p-4 bg-white rounded-lg shadow-sm ${
+      isHighPriority ? 'border-2 border-red-500' : 'border border-gray-300'
     }`}>
-      {/* Header Row: Circle + Agent Label (LHS) and Postcode (RHS) */}
+      {/* Header Row: Postcode with Icon (LHS) and Circle + Agent Label (RHS) */}
       <div className="flex items-center justify-between mb-3">
+        {/* Postcode with clipboard icon on LHS */}
+        <div className="flex items-center gap-2">
+          <svg 
+            width="16" 
+            height="16" 
+            viewBox="0 0 24 24" 
+            fill="none" 
+            stroke="currentColor" 
+            strokeWidth="2" 
+            strokeLinecap="round" 
+            strokeLinejoin="round"
+            className="text-gray-600"
+          >
+            <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
+            <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
+          </svg>
+          <span className="text-sm font-semibold text-gray-900">
+            {caseData.postcode}
+          </span>
+        </div>
+
+        {/* Circle + Agent Label on RHS */}
         <div className="flex items-center gap-2">
           {/* Route/Unallocated Number Circle */}
           {routeNumber !== null && (
@@ -121,11 +143,6 @@ export const CaseCard: React.FC<CaseCardProps> = ({
           <span className="text-sm font-semibold text-gray-900">
             {formattedAgentLabel}
           </span>
-        </div>
-
-        {/* Postcode on RHS */}
-        <div className="text-sm font-semibold text-gray-900">
-          📍 {caseData.postcode}
         </div>
       </div>
 
