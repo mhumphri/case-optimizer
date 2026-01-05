@@ -55,6 +55,7 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
   const [viewMode, setViewMode] = useState<ViewMode>('agents');
   const [caseFilter, setCaseFilter] = useState<CaseFilter>('all');
   const [agentFilter, setAgentFilter] = useState<AgentFilter>('all');
+  const [changesExpanded, setChangesExpanded] = useState(false);
 
   // Helper function to get time in seconds for sorting
   const getTimeInSeconds = (time: string | { seconds: number } | undefined): number => {
@@ -198,6 +199,33 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
     };
   }, [cases]);
 
+  // Handlers that also collapse the changes panel
+  const handleViewModeChange = (mode: ViewMode) => {
+    setViewMode(mode);
+    setChangesExpanded(false);
+  };
+
+  const handleAgentFilterChange = (filter: AgentFilter) => {
+    setAgentFilter(filter);
+    setChangesExpanded(false);
+  };
+
+  const handleCaseFilterChange = (filter: CaseFilter) => {
+    setCaseFilter(filter);
+    setChangesExpanded(false);
+  };
+
+  // Calculate total changes
+  const totalChanges = caseChanges.length + agentChanges.length;
+  const shouldShowChangesPanel = totalChanges > 0 || isRecalculating;
+
+  // Auto-collapse changes panel when all changes are deleted
+  useEffect(() => {
+    if (!shouldShowChangesPanel && changesExpanded) {
+      setChangesExpanded(false);
+    }
+  }, [shouldShowChangesPanel, changesExpanded]);
+
   if (routes.length === 0 && cases.length === 0) return null;
 
   return (
@@ -207,7 +235,7 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
         {/* Tabs */}
         <div className="flex gap-2 mb-4">
           <button
-            onClick={() => setViewMode('agents')}
+            onClick={() => handleViewModeChange('agents')}
             className={`flex-1 px-4 py-2 text-sm font-semibold border-none rounded cursor-pointer transition-colors flex items-center justify-center gap-2 ${
               viewMode === 'agents'
                 ? 'bg-blue-500 text-white'
@@ -228,7 +256,7 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
             <span>Agents</span>
           </button>
           <button
-            onClick={() => setViewMode('cases')}
+            onClick={() => handleViewModeChange('cases')}
             className={`flex-1 px-4 py-2 text-sm font-semibold border-none rounded cursor-pointer transition-colors flex items-center justify-center gap-2 ${
               viewMode === 'cases'
                 ? 'bg-blue-500 text-white'
@@ -260,7 +288,7 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
             </label>
             <select
               value={agentFilter}
-              onChange={(e) => setAgentFilter(e.target.value as AgentFilter)}
+              onChange={(e) => handleAgentFilterChange(e.target.value as AgentFilter)}
               className="w-full text-sm border border-gray-300 rounded px-3 py-2 bg-white cursor-pointer"
             >
               <option value="all">All Agents ({agentCounts.all})</option>
@@ -277,7 +305,7 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
             </label>
             <select
               value={caseFilter}
-              onChange={(e) => setCaseFilter(e.target.value as CaseFilter)}
+              onChange={(e) => handleCaseFilterChange(e.target.value as CaseFilter)}
               className="w-full text-sm border border-gray-300 rounded px-3 py-2 bg-white cursor-pointer"
             >
               <option value="all">All Cases ({caseCounts.all})</option>
@@ -288,99 +316,102 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
         )}
       </div>
 
-      {/* Scrollable Content Area - Added min-h-0 for proper flex shrinking */}
-      <div className="flex-1 min-h-0 overflow-y-auto p-4">
-        {viewMode === 'agents' ? (
-          // Agents View
-          <div className="space-y-4">
-            {filteredAgents.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                No agents match the current filter
-              </div>
-            ) : (
-              filteredAgents.map(({ route, index }) => (
-                <AgentCard
-                  key={`agent-${index}`}
-                  route={route}
-                  index={index}
-                  color={ROUTE_COLORS[index % ROUTE_COLORS.length]}
-                  settings={agentSettings[index]}
-                  cases={cases}
-                  onSettingsChange={onAgentSettingsChange}
-                  onPriorityChange={onPriorityChange}
-                  onSlotChange={onSlotChange}
-                />
-              ))
-            )}
-          </div>
-        ) : (
-          // Cases View
-          <div className="space-y-4">
-            {filteredAndSortedCases.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                No cases match the current filter
-              </div>
-            ) : (
-              filteredAndSortedCases.map((caseData) => {
-                // Find which agent this case is assigned to
-                let agentLabel: string | null = null;
-                let agentColor = '#9ca3af'; // Grey for unallocated
-                let routeNumber: number | null = null;
-                let unallocatedNumber: number | null = null;
-
-                if (caseData.assignedAgentIndex !== null) {
-                  const route = routes[caseData.assignedAgentIndex];
-                  if (route) {
-                    agentLabel = route.vehicleLabel.replace('Vehicle', 'Agent');
-                    agentColor = ROUTE_COLORS[caseData.assignedAgentIndex % ROUTE_COLORS.length];
-
-                    // Find the visit index (position in route) for this case
-                    const visitIndex = route.visits.findIndex(visit => {
-                      // Match by shipment index which corresponds to case
-                      return visit.shipmentLabel === caseData.postcode;
-                    });
-
-                    if (visitIndex >= 0) {
-                      routeNumber = visitIndex + 1; // 1-indexed for display
-                    }
-                  }
-                } else {
-                  // Unallocated case - get its number
-                  unallocatedNumber = unallocatedNumberMap.get(caseData.id) ?? null;
-                }
-
-                return (
-                  <CaseCard
-                    key={caseData.id}
-                    caseData={caseData}
-                    agentLabel={agentLabel}
-                    agentColor={agentColor}
-                    routeNumber={routeNumber}
-                    unallocatedNumber={unallocatedNumber}
+      {/* Scrollable Content Area - Hidden when changes expanded */}
+      {!changesExpanded && (
+        <div className="flex-1 min-h-0 overflow-y-auto p-4">
+          {viewMode === 'agents' ? (
+            // Agents View
+            <div className="space-y-4">
+              {filteredAgents.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  No agents match the current filter
+                </div>
+              ) : (
+                filteredAgents.map(({ route, index }) => (
+                  <AgentCard
+                    key={`agent-${index}`}
+                    route={route}
+                    index={index}
+                    color={ROUTE_COLORS[index % ROUTE_COLORS.length]}
+                    settings={agentSettings[index]}
+                    cases={cases}
+                    onSettingsChange={onAgentSettingsChange}
                     onPriorityChange={onPriorityChange}
                     onSlotChange={onSlotChange}
                   />
-                );
-              })
-            )}
-          </div>
-        )}
-      </div>
+                ))
+              )}
+            </div>
+          ) : (
+            // Cases View
+            <div className="space-y-4">
+              {filteredAndSortedCases.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  No cases match the current filter
+                </div>
+              ) : (
+                filteredAndSortedCases.map((caseData) => {
+                  // Find which agent this case is assigned to
+                  let agentLabel: string | null = null;
+                  let agentColor = '#9ca3af'; // Grey for unallocated
+                  let routeNumber: number | null = null;
+                  let unallocatedNumber: number | null = null;
 
-      {/* Fixed Changes Panel at Bottom */}
-      <div 
-        className="bg-white shrink-0"
-        style={{ maxHeight: '50vh' }} // Limit panel to 50% of viewport to keep button visible
-      >
-        <ChangesPanel
-          caseChanges={caseChanges}
-          agentChanges={agentChanges}
-          onRecalculate={onRecalculate}
-          onDeleteCaseChange={onDeleteCaseChange}
-          onDeleteAgentChange={onDeleteAgentChange}
-          isRecalculating={isRecalculating}
-        />
-      </div>
+                  if (caseData.assignedAgentIndex !== null) {
+                    const route = routes[caseData.assignedAgentIndex];
+                    if (route) {
+                      agentLabel = route.vehicleLabel.replace('Vehicle', 'Agent');
+                      agentColor = ROUTE_COLORS[caseData.assignedAgentIndex % ROUTE_COLORS.length];
+
+                      // Find the visit index (position in route) for this case
+                      const visitIndex = route.visits.findIndex(visit => {
+                        // Match by shipment index which corresponds to case
+                        return visit.shipmentLabel === caseData.postcode;
+                      });
+
+                      if (visitIndex >= 0) {
+                        routeNumber = visitIndex + 1; // 1-indexed for display
+                      }
+                    }
+                  } else {
+                    // Unallocated case - get its number
+                    unallocatedNumber = unallocatedNumberMap.get(caseData.id) ?? null;
+                  }
+
+                  return (
+                    <CaseCard
+                      key={caseData.id}
+                      caseData={caseData}
+                      agentLabel={agentLabel}
+                      agentColor={agentColor}
+                      routeNumber={routeNumber}
+                      unallocatedNumber={unallocatedNumber}
+                      onPriorityChange={onPriorityChange}
+                      onSlotChange={onSlotChange}
+                    />
+                  );
+                })
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Changes Panel - Only render container if there are changes or recalculating */}
+      {shouldShowChangesPanel && (
+        <div className={changesExpanded ? "flex-1 min-h-0 bg-white" : "bg-white shrink-0"}>
+          <ChangesPanel
+            caseChanges={caseChanges}
+            agentChanges={agentChanges}
+            onRecalculate={onRecalculate}
+            onDeleteCaseChange={onDeleteCaseChange}
+            onDeleteAgentChange={onDeleteAgentChange}
+            isRecalculating={isRecalculating}
+            isExpanded={changesExpanded}
+            onToggleExpanded={setChangesExpanded}
+          />
+        </div>
+      )}
     </div>
   );
 };

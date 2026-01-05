@@ -1,6 +1,6 @@
 // components/ChangesPanel.tsx
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import type { CaseChange, PriorityChange, TimeSlotChange, AgentChange } from '../types/route';
 
 interface ChangesPanelProps {
@@ -10,6 +10,8 @@ interface ChangesPanelProps {
   onDeleteCaseChange: (caseId: string, changeType: 'priority' | 'slot') => void;
   onDeleteAgentChange: (agentIndex: number) => void;
   isRecalculating: boolean;
+  isExpanded: boolean;
+  onToggleExpanded: (expanded: boolean) => void;
 }
 
 // Colors for different agents (same as RouteMap and RouteDetails)
@@ -50,35 +52,35 @@ export const ChangesPanel: React.FC<ChangesPanelProps> = ({
   onRecalculate,
   onDeleteCaseChange,
   onDeleteAgentChange,
-  isRecalculating 
+  isRecalculating,
+  isExpanded,
+  onToggleExpanded
 }) => {
-  const [isExpanded, setIsExpanded] = useState(false);
-
   const totalChanges = caseChanges.length + agentChanges.length;
 
   // Auto-collapse when recalculation starts
   useEffect(() => {
     if (isRecalculating) {
-      setIsExpanded(false);
+      onToggleExpanded(false);
     }
-  }, [isRecalculating]);
+  }, [isRecalculating, onToggleExpanded]);
 
   // Show panel if there are changes OR if recalculating
   if (totalChanges === 0 && !isRecalculating) return null;
 
   return (
-    <div className="border border-x-0 border-b-0 border-gray-300 bg-white shrink-0 rounded-t-xl flex flex-col max-h-full">
+    <div className={`border border-x-0 border-b-0 ${isExpanded ? 'border-t-0' : ''} border-gray-300 bg-white shrink-0 rounded-t-xl flex flex-col ${isExpanded ? 'h-full' : ''}`}>
       {/* Changes Summary Row */}
       <div className="px-3 py-3 flex justify-between items-center border-b border-gray-200 shrink-0">
         <span className="text-sm font-medium text-gray-700">
           {isRecalculating && totalChanges === 0 
             ? 'Recalculating...' 
-            : `${totalChanges} change${totalChanges !== 1 ? 's' : ''}`
+            : `${totalChanges} pending change${totalChanges !== 1 ? 's' : ''}`
           }
         </span>
         {totalChanges > 0 && (
           <button
-            onClick={() => setIsExpanded(!isExpanded)}
+            onClick={() => onToggleExpanded(!isExpanded)}
             disabled={isRecalculating}
             className={`px-3 py-1 text-xs font-medium rounded cursor-pointer ${
               isRecalculating 
@@ -93,7 +95,7 @@ export const ChangesPanel: React.FC<ChangesPanelProps> = ({
         )}
       </div>
 
-      {/* Expandable Changes List - Scrollable with flex-1 */}
+      {/* Expandable Changes List - Scrollable */}
       {isExpanded && totalChanges > 0 && (
         <div 
           className="flex-1 overflow-y-auto border-b border-gray-200 min-h-0"
