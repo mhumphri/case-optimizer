@@ -47,9 +47,9 @@ export const ChangesPanel: React.FC<ChangesPanelProps> = ({
   if (totalChanges === 0 && !isRecalculating) return null;
 
   return (
-    <div className="border-t border-gray-300 bg-white shrink-0">
+   <div className="border border-x-0 border-b-0 border-gray-300 bg-white shrink-0 rounded-t-xl">
       {/* Changes Summary Row */}
-      <div className="px-3 py-2 flex justify-between items-center border-b border-gray-200">
+      <div className="px-3 py-3 flex justify-between items-center border-b border-gray-200">
         <span className="text-sm font-medium text-gray-700">
           {isRecalculating && totalChanges === 0 
             ? 'Recalculating...' 
@@ -235,19 +235,20 @@ export const ChangesPanel: React.FC<ChangesPanelProps> = ({
       )}
 
       {/* Recalculate Button */}
-      <div className="p-3">
-        <button
-          onClick={onRecalculate}
-          disabled={isRecalculating}
-          className={`w-full px-4 py-3 text-sm font-bold border-none rounded cursor-pointer ${
-            isRecalculating
-              ? 'bg-gray-400 text-white cursor-not-allowed'
-              : 'bg-blue-500 text-white hover:bg-blue-600'
-          }`}
-        >
-          {isRecalculating ? '⏳ Recalculating Routes...' : '🔄 Recalculate Routes'}
-        </button>
-      </div>
+
+<div className="p-3">
+  <button
+    onClick={onRecalculate}
+    disabled={isRecalculating}
+    className={`w-full px-4 py-3 text-base font-semibold border-none rounded cursor-pointer ${
+      isRecalculating
+        ? 'bg-gray-400 text-white cursor-not-allowed'
+        : 'bg-emerald-500 text-white hover:bg-emerald-600'
+    }`}
+  >
+    {isRecalculating ? '◐ Recalculating Routes...' : '↻ Recalculate Routes'}
+  </button>
+</div>
     </div>
   );
 };

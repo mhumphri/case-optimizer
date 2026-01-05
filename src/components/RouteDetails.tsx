@@ -368,7 +368,7 @@ filteredAgents.map(({ route, index }) => (
       </div>
 
       {/* Fixed Changes Panel at Bottom */}
-      <div className="shrink-0 border-t border-gray-200 bg-white">
+      <div className="shrink-0  bg-white">
         <ChangesPanel
           caseChanges={caseChanges}
           agentChanges={agentChanges}
