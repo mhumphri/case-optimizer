@@ -39,8 +39,7 @@ const createAgentIcon = (color: string): string => {
 
 const PRIORITY_LABELS = {
   high: 'HIGH',
-  medium: 'MEDIUM',
-  low: 'LOW',
+  normal: 'NORMAL',
 };
 
 export const ChangesPanel: React.FC<ChangesPanelProps> = ({ 

@@ -119,38 +119,38 @@ export const CaseCard: React.FC<CaseCardProps> = ({
       </div>
 
       {/* Arrival Time and Priority Row */}
-      <div className="grid grid-cols-2 gap-2 mb-3">
-        <div className="flex flex-col justify-center">
-          <label className="block text-xs font-medium text-gray-600 mb-1">
-            Arrival Time
-          </label>
-          <div className="text-xs text-gray-700">
-            {caseData.deliveryTime ? (
-              <>
-                🕐 {formatTimeWithoutSeconds(caseData.deliveryTime)} ({caseData.status === 'complete' ? 'complete' : 'pending'})
-              </>
-            ) : (
-              <span className="text-gray-400">Not scheduled</span>
-            )}
-          </div>
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">
-            Priority
-          </label>
-          <select
-            value={caseData.priority}
-            onChange={(e) =>
-              onPriorityChange(caseData.id, e.target.value as CasePriority)
-            }
-            className="w-full text-xs border border-gray-300 rounded px-2 py-1 bg-white cursor-pointer"
-          >
-            <option value="low">Low</option>
-            <option value="medium">Medium</option>
-            <option value="high">High</option>
-          </select>
-        </div>
-      </div>
+<div className="grid grid-cols-2 gap-2 mb-3">
+  <div className="flex flex-col justify-center">
+    <label className="block text-xs font-medium text-gray-600 mb-1">
+      Arrival Time
+    </label>
+    <div className="text-xs text-gray-700">
+      {caseData.deliveryTime ? (
+        <>
+          🕐 {formatTimeWithoutSeconds(caseData.deliveryTime)} ({caseData.status === 'complete' ? 'complete' : 'pending'})
+        </>
+      ) : (
+        <span className="text-gray-400">Not scheduled</span>
+      )}
+    </div>
+  </div>
+  <div>
+    <label className="block text-xs font-medium text-gray-600 mb-1">
+      Priority
+    </label>
+    {/* ✅ UPDATED: Only 'normal' and 'high' options */}
+    <select
+      value={caseData.priority}
+      onChange={(e) =>
+        onPriorityChange(caseData.id, e.target.value as CasePriority)
+      }
+      className="w-full text-xs border border-gray-300 rounded px-2 py-1 bg-white cursor-pointer"
+    >
+      <option value="normal">Normal</option>
+      <option value="high">High</option>
+    </select>
+  </div>
+</div>
 
       {/* Time Slot - moved to bottom */}
       <TimeSlotInput

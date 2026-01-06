@@ -1,4 +1,4 @@
-// types/route.ts
+// types/route.ts - UPDATED
 
 export interface Location {
   latitude: number;
@@ -23,7 +23,9 @@ export interface OptimizedRoute {
   metrics: RouteMetrics;
 }
 
-export type CasePriority = 'low' | 'medium' | 'high';
+// ✅ UPDATED: Changed from 'low' | 'medium' | 'high' to 'normal' | 'high'
+export type CasePriority = 'normal' | 'high';
+
 export type CaseStatus = 'pending' | 'complete';
 
 export interface TimeSlot {
@@ -34,12 +36,12 @@ export interface TimeSlot {
 export interface CaseData {
   id: string;
   postcode: string;
-  location?: Location; // Geocoded coordinates
+  location?: Location;
   priority: CasePriority;
   status: CaseStatus;
-  assignedAgentIndex: number | null; // null if unallocated
-  deliveryTime?: string | { seconds: number }; // Expected delivery time
-  deliverySlot?: TimeSlot; // Required delivery time window (optional)
+  assignedAgentIndex: number | null;
+  deliveryTime?: string | { seconds: number };
+  deliverySlot?: TimeSlot;
 }
 
 export interface PriorityChange {
@@ -60,14 +62,13 @@ export interface TimeSlotChange {
 
 export type CaseChange = PriorityChange | TimeSlotChange;
 
-// Agent Settings Types
 export interface AgentSettings {
-  startTime: string; // "HH:mm"
-  endTime: string;   // "HH:mm"
-  lunchDuration: number; // minutes
-  active: boolean; // whether agent is active or inactive
-  finishPostcode?: string; // Optional different finish location
-  finishLocation?: Location; // Geocoded finish coordinates
+  startTime: string;
+  endTime: string;
+  lunchDuration: number;
+  active: boolean;
+  finishPostcode?: string;
+  finishLocation?: Location;
 }
 
 export interface AgentChange {
@@ -80,7 +81,6 @@ export interface AgentChange {
 
 export type Change = CaseChange | AgentChange;
 
-// Scenario Types
 export interface ScenarioConfig {
   name: string;
   description: string;
@@ -89,7 +89,7 @@ export interface ScenarioConfig {
   defaultStartTime: string;
   defaultEndTime: string;
   defaultLunchDuration: number;
-  agentFinishPostcodes?: (string | undefined)[]; // Optional finish locations for each agent
+  agentFinishPostcodes?: (string | undefined)[];
 }
 
 export type ScenarioType = 'full' | 'reduced';

@@ -1,20 +1,24 @@
+// utils/priorityMapping.ts - UPDATED
+
 import type { CasePriority } from '../types/route';
 
 /**
  * Map case priority to penalty cost for route optimization
  * Penalty cost represents the "cost" of NOT completing this delivery
  * Higher priority = higher cost to skip = more likely to be included
+ * 
+ * ✅ UPDATED: Two-tier system with 5:1 ratio
+ * - Normal: £100 (baseline cost for standard deliveries)
+ * - High: £500 (5x multiplier for urgent/priority deliveries)
  */
 export const getPenaltyCost = (priority: CasePriority): number => {
   switch (priority) {
     case 'high':
-      return 1000; // High cost to skip high-priority cases
-    case 'medium':
-      return 300; // Medium cost to skip medium-priority cases
-    case 'low':
-      return 100; // Low cost to skip low-priority cases
+      return 500; // High cost to skip high-priority cases
+    case 'normal':
+      return 100; // Baseline cost for normal cases
     default:
-      return 300;
+      return 100;
   }
 };
 

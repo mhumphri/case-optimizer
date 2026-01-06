@@ -515,34 +515,34 @@ export const AgentCard: React.FC<AgentCardProps> = ({
                       </div>
 
                       {/* Expanded Content - Priority and Time Slot (no top border) */}
-                      {isThisCaseExpanded && (
-                        <div className="px-2 pb-2 pt-1">
-                          {/* Priority Dropdown */}
-                          <div className="mb-2">
-                            <label className="block text-xs font-medium text-gray-600 mb-1">
-                              Priority
-                            </label>
-                            <select
-                              value={caseData.priority}
-                              onChange={(e) =>
-                                onPriorityChange(caseData.id, e.target.value as CasePriority)
-                              }
-                              className="w-full text-xs border border-gray-300 rounded px-2 py-1 bg-white cursor-pointer"
-                            >
-                              <option value="low">Low</option>
-                              <option value="medium">Medium</option>
-                              <option value="high">High</option>
-                            </select>
-                          </div>
+{isThisCaseExpanded && (
+  <div className="px-2 pb-2 pt-1">
+    {/* Priority Dropdown */}
+    <div className="mb-2">
+      <label className="block text-xs font-medium text-gray-600 mb-1">
+        Priority
+      </label>
+      {/* ✅ UPDATED: Only 'normal' and 'high' options */}
+      <select
+        value={caseData.priority}
+        onChange={(e) =>
+          onPriorityChange(caseData.id, e.target.value as CasePriority)
+        }
+        className="w-full text-xs border border-gray-300 rounded px-2 py-1 bg-white cursor-pointer"
+      >
+        <option value="normal">Normal</option>
+        <option value="high">High</option>
+      </select>
+    </div>
 
-                          {/* Time Slot Input */}
-                          <TimeSlotInput
-                            caseId={caseData.id}
-                            deliverySlot={caseData.deliverySlot}
-                            onSlotChange={onSlotChange}
-                          />
-                        </div>
-                      )}
+    {/* Time Slot Input */}
+    <TimeSlotInput
+      caseId={caseData.id}
+      deliverySlot={caseData.deliverySlot}
+      onSlotChange={onSlotChange}
+    />
+  </div>
+)}
                     </div>
                   );
                 })}

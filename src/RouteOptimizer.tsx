@@ -470,13 +470,12 @@ const RouteOptimizer: React.FC = () => {
         console.log(`  Cases with delivery slots: ${slotsCount}/${shipments.length}`);
       }
 
-      const priorityDistribution = {
-        high: initialCases.filter(c => c.priority === 'high').length,
-        medium: initialCases.filter(c => c.priority === 'medium').length,
-        low: initialCases.filter(c => c.priority === 'low').length,
-      };
-      console.log('📊 Priority Distribution:', priorityDistribution);
-      console.log('💰 Penalty Costs: High=£1000, Medium=£300, Low=£100');
+const priorityDistribution = {
+  high: initialCases.filter(c => c.priority === 'high').length,
+  normal: initialCases.filter(c => c.priority === 'normal').length,
+};
+console.log('📊 Priority Distribution:', priorityDistribution);
+console.log('💰 Penalty Costs: High=£500, Normal=£100');
 
       console.log('👤 Agent Settings:');
       currentAgentSettings.forEach((settings, index) => {

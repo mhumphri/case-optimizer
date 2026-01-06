@@ -1,19 +1,21 @@
+// utils/caseGenerator.ts - UPDATED
+
 import type { CasePriority } from '../types/route';
 
 /**
  * Generate a random priority with distribution:
- * - 1/7 high priority
- * - 1/7 low priority  
- * - 5/7 medium priority
+ * - 1/6 high priority (approximately 17% of cases)
+ * - 5/6 normal priority (approximately 83% of cases)
+ * 
+ * ✅ UPDATED: Changed from three-tier (low/medium/high) to two-tier (normal/high)
  */
 export const generateCasePriority = (): CasePriority => {
   const random = Math.random();
   
+  // 1 in 6 cases are high priority
   if (random < 1/3) {
     return 'high';
-  } else if (random < 2/7) {
-    return 'low';
   } else {
-    return 'medium';
+    return 'normal';
   }
 };
