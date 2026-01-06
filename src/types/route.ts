@@ -63,13 +63,16 @@ export interface TimeSlotChange {
 export type CaseChange = PriorityChange | TimeSlotChange;
 
 export interface AgentSettings {
-  startTime: string;
-  endTime: string;
-  lunchDuration: number;
-  active: boolean;
-  finishPostcode?: string;
-  finishLocation?: Location;
+  startTime: string; // "HH:mm"
+  endTime: string;   // "HH:mm"
+  lunchDuration: number; // minutes
+  active: boolean; // whether agent is active or inactive
+  startPostcode?: string; // Optional custom start location (overrides default)
+  startLocation?: Location; // Geocoded start coordinates
+  finishPostcode?: string; // Optional different finish location
+  finishLocation?: Location; // Geocoded finish coordinates
 }
+
 
 export interface AgentChange {
   agentIndex: number;

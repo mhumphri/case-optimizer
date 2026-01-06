@@ -1,4 +1,4 @@
-// RouteOptimizer.tsx
+// RouteOptimizer.tsx - COMPLETE FILE with editable start location support
 import React, { useState, useRef } from 'react';
 import { useJsApiLoader } from '@react-google-maps/api';
 import type { Location, OptimizedRoute, CaseData, CasePriority, CaseChange, TimeSlot, AgentSettings, AgentChange, ScenarioConfig, ScenarioType } from './types/route';
@@ -159,6 +159,7 @@ const RouteOptimizer: React.FC = () => {
         originalSettings.endTime === newSettings.endTime &&
         originalSettings.lunchDuration === newSettings.lunchDuration &&
         originalSettings.active === newSettings.active &&
+        originalSettings.startPostcode === newSettings.startPostcode &&
         originalSettings.finishPostcode === newSettings.finishPostcode;
 
       if (settingsEqual) {
@@ -285,6 +286,9 @@ const RouteOptimizer: React.FC = () => {
         console.log(`  - ${change.agentLabel}:`);
         console.log(`    Hours: ${change.oldSettings.startTime}-${change.oldSettings.endTime} → ${change.newSettings.startTime}-${change.newSettings.endTime}`);
         console.log(`    Lunch: ${change.oldSettings.lunchDuration}min → ${change.newSettings.lunchDuration}min`);
+        if (change.oldSettings.startPostcode !== change.newSettings.startPostcode) {
+          console.log(`    Start: ${change.oldSettings.startPostcode || 'Default'} → ${change.newSettings.startPostcode || 'Default'}`);
+        }
         if (change.oldSettings.finishPostcode !== change.newSettings.finishPostcode) {
           console.log(`    Finish: ${change.oldSettings.finishPostcode || 'None'} → ${change.newSettings.finishPostcode || 'None'}`);
         }
@@ -311,6 +315,8 @@ const RouteOptimizer: React.FC = () => {
         endTime: scenario.defaultEndTime,
         lunchDuration: scenario.defaultLunchDuration,
         active: true,
+        startPostcode: undefined,
+        startLocation: undefined,
         finishPostcode: scenario.agentFinishPostcodes?.[index],
         finishLocation: undefined,
       }));
@@ -411,14 +417,20 @@ const RouteOptimizer: React.FC = () => {
           endTime: { seconds: timeToSeconds(settings.endTime) },
         };
 
-        const endLocation = settings.finishLocation
-          ? settings.finishLocation
+        // ✅ Use custom start location if set, otherwise use default
+        const startLocation = settings.startLocation 
+          ? settings.startLocation 
           : agentLocations[index] || { latitude: 51.5074, longitude: -0.1278 };
 
+        // ✅ Use custom finish location if set, otherwise use start location
+        const endLocation = settings.finishLocation
+          ? settings.finishLocation
+          : startLocation;
+
         const vehicle: any = {
-          startLocation: agentLocations[index] || { latitude: 51.5074, longitude: -0.1278 },
+          startLocation: startLocation,
           endLocation: endLocation,
-          label: `Agent ${index + 1} (${postcode})`,
+          label: `Agent ${index + 1} (${settings.startPostcode || postcode})`,
           startTimeWindows: [shiftTimeWindow],
           endTimeWindows: [shiftTimeWindow],
         };
@@ -470,18 +482,26 @@ const RouteOptimizer: React.FC = () => {
         console.log(`  Cases with delivery slots: ${slotsCount}/${shipments.length}`);
       }
 
-const priorityDistribution = {
-  high: initialCases.filter(c => c.priority === 'high').length,
-  normal: initialCases.filter(c => c.priority === 'normal').length,
-};
-console.log('📊 Priority Distribution:', priorityDistribution);
-console.log('💰 Penalty Costs: High=£500, Normal=£100');
+      const priorityDistribution = {
+        high: initialCases.filter(c => c.priority === 'high').length,
+        normal: initialCases.filter(c => c.priority === 'normal').length,
+      };
+      console.log('📊 Priority Distribution:', priorityDistribution);
+      console.log('💰 Penalty Costs: High=£500, Normal=£100');
 
       console.log('👤 Agent Settings:');
       currentAgentSettings.forEach((settings, index) => {
         if (settings.active) {
-          const finishInfo = settings.finishPostcode ? ` → ${settings.finishPostcode}` : ' (returns to start)';
-          console.log(`  Agent ${index + 1}: ${settings.startTime}-${settings.endTime}, ${settings.lunchDuration}min lunch${finishInfo} [ACTIVE]`);
+          const startInfo = settings.startPostcode 
+            ? `Start: ${settings.startPostcode}` 
+            : `Start: ${scenario.agentPostcodes[index]}`;
+          const finishInfo = settings.finishPostcode 
+            ? ` → Finish: ${settings.finishPostcode}` 
+            : ' (returns to start)';
+          console.log(
+            `  Agent ${index + 1}: ${startInfo}${finishInfo}, ` +
+            `${settings.startTime}-${settings.endTime}, ${settings.lunchDuration}min lunch [ACTIVE]`
+          );
         } else {
           console.log(`  Agent ${index + 1}: [INACTIVE]`);
         }

@@ -1,4 +1,5 @@
-// components/AgentCard.tsx
+// components/AgentCard.tsx - UPDATED with Reset removed from start location
+
 import React, { useState, useEffect } from 'react';
 import type { OptimizedRoute, AgentSettings, CaseData, CasePriority, TimeSlot, Location } from '../types/route';
 import { generateTimeOptions, generateLunchOptions } from '../utils/timeSlotGenerator';
@@ -65,17 +66,27 @@ export const AgentCard: React.FC<AgentCardProps> = ({
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [expandedCaseId, setExpandedCaseId] = useState<string | null>(null);
+  
+  // State for editing start location
+  const [showStartInput, setShowStartInput] = useState(false);
+  const [startPostcodeInput, setStartPostcodeInput] = useState('');
+  const [isGeocodingStart, setIsGeocodingStart] = useState(false);
+  
+  // State for editing finish location
   const [showFinishInput, setShowFinishInput] = useState(false);
   const [finishPostcodeInput, setFinishPostcodeInput] = useState('');
   const [isGeocodingFinish, setIsGeocodingFinish] = useState(false);
 
-  // Extract agent name from vehicleLabel (e.g., "Agent 1 (SW1 4GO)")
+  // Extract agent name and default postcode from vehicleLabel
   const agentLabel = route.vehicleLabel.replace('Vehicle', 'Agent');
   const agentName = agentLabel.split(' (')[0]; // "Agent 1"
-  const agentPostcode = agentLabel.match(/\(([^)]+)\)/)?.[1] || ''; // "SW1 4GO"
+  const defaultAgentPostcode = agentLabel.match(/\(([^)]+)\)/)?.[1] || ''; // "SW1 4GO"
+  
+  // Use custom start postcode if set, otherwise use default
+  const displayStartPostcode = settings.startPostcode || defaultAgentPostcode;
 
-  const timeOptions = generateTimeOptions(true); // Extended range: 07:00-20:00
-  const lunchOptions = generateLunchOptions(); // 0-120 mins in 15-min increments
+  const timeOptions = generateTimeOptions(true);
+  const lunchOptions = generateLunchOptions();
 
   // Reset case list when agent becomes inactive
   useEffect(() => {
@@ -98,9 +109,8 @@ export const AgentCard: React.FC<AgentCardProps> = ({
   };
 
   const handleStartTimeChange = (newStartTime: string) => {
-    // Validate: start time cannot be after end time
     if (newStartTime >= settings.endTime) {
-      return; // Invalid, ignore
+      return;
     }
     onSettingsChange(index, {
       ...settings,
@@ -109,9 +119,8 @@ export const AgentCard: React.FC<AgentCardProps> = ({
   };
 
   const handleEndTimeChange = (newEndTime: string) => {
-    // Validate: end time cannot be before start time
     if (newEndTime <= settings.startTime) {
-      return; // Invalid, ignore
+      return;
     }
     onSettingsChange(index, {
       ...settings,
@@ -130,12 +139,56 @@ export const AgentCard: React.FC<AgentCardProps> = ({
     setExpandedCaseId(expandedCaseId === caseId ? null : caseId);
   };
 
+  // Start location handlers
+  const handleEditStartClick = () => {
+    setShowStartInput(true);
+    setStartPostcodeInput(displayStartPostcode);
+  };
+
+  const handleUpdateStart = async () => {
+    if (!startPostcodeInput.trim()) return;
+
+    setIsGeocodingStart(true);
+    try {
+      const location = await geocodePostcode(startPostcodeInput.trim());
+      if (location) {
+        onSettingsChange(index, {
+          ...settings,
+          startPostcode: startPostcodeInput.trim(),
+          startLocation: location,
+        });
+        setShowStartInput(false);
+        setStartPostcodeInput('');
+      } else {
+        alert('Could not geocode postcode. Please check and try again.');
+      }
+    } catch (error) {
+      console.error('Error geocoding start location:', error);
+      alert('Error geocoding postcode. Please try again.');
+    } finally {
+      setIsGeocodingStart(false);
+    }
+  };
+
+  // ❌ REMOVED: handleResetStart function
+
+  const handleCancelStartInput = () => {
+    setShowStartInput(false);
+    setStartPostcodeInput('');
+  };
+
+  // Finish location handlers with Edit support
   const handleAddFinishClick = () => {
     setShowFinishInput(true);
     setFinishPostcodeInput('');
   };
 
-  const handleAddFinish = async () => {
+  const handleEditFinishClick = () => {
+    setShowFinishInput(true);
+    setFinishPostcodeInput(settings.finishPostcode || '');
+  };
+
+  const handleUpdateFinish = async () => {
     if (!finishPostcodeInput.trim()) return;
 
     setIsGeocodingFinish(true);
@@ -184,55 +237,121 @@ export const AgentCard: React.FC<AgentCardProps> = ({
         />
         <h3 className="text-base font-bold text-gray-900">{agentName}</h3>
         
-        {/* Active/Inactive Toggle - smaller standard toggle switch style */}
+        {/* Active/Inactive Toggle */}
         <div className="ml-auto flex items-center gap-2">
           <span className="text-xs font-medium text-gray-700">
             {settings.active ? 'Active' : 'Inactive'}
           </span>
           <button
-            onClick={() => onSettingsChange(index, { ...settings, active: !settings.active })}
-            className={`w-9 h-5 rounded-full transition-colors relative cursor-pointer border-2 ${
-              settings.active
-                ? 'bg-blue-400 border-blue-400'
-                : 'bg-gray-300 border-gray-300'
+            onClick={() =>
+              onSettingsChange(index, {
+                ...settings,
+                active: !settings.active,
+              })
+            }
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
+              settings.active ? 'bg-blue-500' : 'bg-gray-300'
             }`}
+            aria-label="Toggle agent active state"
           >
-            <div
-              className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform ${
-                settings.active ? 'translate-x-[1.125rem]' : 'translate-x-0.5'
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                settings.active ? 'translate-x-6' : 'translate-x-1'
               }`}
             />
           </button>
         </div>
       </div>
 
-      {/* Start Postcode - Only show when active */}
+      {/* Start Location - Only show when active */}
       {settings.active && (
-        <div className="flex items-center gap-2 mb-3">
-          <svg 
-            width="14" 
-            height="14" 
-            viewBox="0 0 24 24" 
-            fill="none" 
-            stroke="currentColor" 
-            strokeWidth="2" 
-            strokeLinecap="round" 
-            strokeLinejoin="round"
-            className="text-gray-600"
-          >
-            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
-            <circle cx="12" cy="10" r="3"></circle>
-          </svg>
-          <span className="text-sm text-gray-700">{agentPostcode}</span>
+        <div className="flex items-center justify-between mb-3">
+          {/* LHS - Home icon and postcode */}
+          <div className="flex items-center gap-2">
+            {!showStartInput && (
+              <>
+                <svg 
+                  width="14" 
+                  height="14" 
+                  viewBox="0 0 24 24" 
+                  fill="none" 
+                  stroke="currentColor" 
+                  strokeWidth="2" 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round"
+                  className="text-gray-600"
+                >
+                  <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                  <polyline points="9 22 9 12 15 12 15 22"></polyline>
+                </svg>
+                <span className="text-sm text-gray-700">{displayStartPostcode}</span>
+              </>
+            )}
+            {showStartInput && (
+              <div className="flex items-center gap-2">
+                <svg 
+                  width="14" 
+                  height="14" 
+                  viewBox="0 0 24 24" 
+                  fill="none" 
+                  stroke="currentColor" 
+                  strokeWidth="2" 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round"
+                  className="text-gray-600"
+                >
+                  <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                  <polyline points="9 22 9 12 15 12 15 22"></polyline>
+                </svg>
+                <input
+                  type="text"
+                  value={startPostcodeInput}
+                  onChange={(e) => setStartPostcodeInput(e.target.value)}
+                  placeholder="Enter postcode"
+                  className="text-xs border border-gray-300 rounded px-2 py-1 w-32"
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') handleUpdateStart();
+                  }}
+                  disabled={isGeocodingStart}
+                />
+                <button
+                  onClick={handleUpdateStart}
+                  disabled={isGeocodingStart || !startPostcodeInput.trim()}
+                  className="text-xs px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                >
+                  {isGeocodingStart ? '...' : 'Update'}
+                </button>
+                <button
+                  onClick={handleCancelStartInput}
+                  disabled={isGeocodingStart}
+                  className="text-xs px-2 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* RHS - Edit button only (Reset removed) */}
+          <div className="ml-auto">
+            {!showStartInput && (
+              <button
+                onClick={handleEditStartClick}
+                className="text-xs text-blue-600 hover:text-blue-700 font-medium cursor-pointer"
+              >
+                Edit
+              </button>
+            )}
+          </div>
         </div>
       )}
 
       {/* Finish Location - Only show when active */}
       {settings.active && (
         <div className="flex items-center justify-between mb-3">
-          {/* LHS - Chequered flag icon (if finish location exists) */}
+          {/* LHS - Chequered flag icon and postcode (if finish location exists) */}
           <div className="flex items-center gap-2">
-            {settings.finishPostcode && (
+            {settings.finishPostcode && !showFinishInput && (
               <>
                 <svg 
                   width="14" 
@@ -251,9 +370,54 @@ export const AgentCard: React.FC<AgentCardProps> = ({
                 <span className="text-sm text-gray-700">{settings.finishPostcode}</span>
               </>
             )}
+            {showFinishInput && (
+              <>
+                <svg 
+                  width="14" 
+                  height="14" 
+                  viewBox="0 0 24 24" 
+                  fill="none" 
+                  stroke="currentColor" 
+                  strokeWidth="2" 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round"
+                  className="text-gray-600"
+                >
+                  <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path>
+                  <line x1="4" y1="22" x2="4" y2="15"></line>
+                </svg>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={finishPostcodeInput}
+                    onChange={(e) => setFinishPostcodeInput(e.target.value)}
+                    placeholder="Enter postcode"
+                    className="text-xs border border-gray-300 rounded px-2 py-1 w-32"
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter') handleUpdateFinish();
+                    }}
+                    disabled={isGeocodingFinish}
+                  />
+                  <button
+                    onClick={handleUpdateFinish}
+                    disabled={isGeocodingFinish || !finishPostcodeInput.trim()}
+                    className="text-xs px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                  >
+                    {isGeocodingFinish ? '...' : settings.finishPostcode ? 'Update' : 'Add'}
+                  </button>
+                  <button
+                    onClick={handleCancelFinishInput}
+                    disabled={isGeocodingFinish}
+                    className="text-xs px-2 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </>
+            )}
           </div>
 
-          {/* RHS - Add/Remove button or input */}
+          {/* RHS - Add/Edit/Remove buttons */}
           <div className="ml-auto">
             {!settings.finishPostcode && !showFinishInput && (
               <button
@@ -264,57 +428,35 @@ export const AgentCard: React.FC<AgentCardProps> = ({
               </button>
             )}
 
-            {showFinishInput && (
+            {settings.finishPostcode && !showFinishInput && (
               <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={finishPostcodeInput}
-                  onChange={(e) => setFinishPostcodeInput(e.target.value)}
-                  placeholder="Enter postcode"
-                  className="text-xs border border-gray-300 rounded px-2 py-1 w-32"
-                  onKeyPress={(e) => {
-                    if (e.key === 'Enter') handleAddFinish();
-                  }}
-                  disabled={isGeocodingFinish}
-                />
                 <button
-                  onClick={handleAddFinish}
-                  disabled={isGeocodingFinish || !finishPostcodeInput.trim()}
-                  className="text-xs px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                  onClick={handleEditFinishClick}
+                  className="text-xs text-blue-600 hover:text-blue-700 font-medium cursor-pointer"
                 >
-                  {isGeocodingFinish ? '...' : 'Add'}
+                  Edit
                 </button>
                 <button
-                  onClick={handleCancelFinishInput}
-                  disabled={isGeocodingFinish}
-                  className="text-xs px-2 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                  onClick={handleRemoveFinish}
+                  className="flex items-center gap-1 text-[10px] text-gray-500 hover:text-gray-700 cursor-pointer"
                 >
-                  Cancel
+                  <span>Remove</span>
+                  <svg 
+                    width="12" 
+                    height="12" 
+                    viewBox="0 0 24 24" 
+                    fill="none" 
+                    stroke="currentColor" 
+                    strokeWidth="2" 
+                    strokeLinecap="round" 
+                    strokeLinejoin="round"
+                  >
+                    <path d="M3 6h18"></path>
+                    <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                    <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+                  </svg>
                 </button>
               </div>
-            )}
-
-            {settings.finishPostcode && !showFinishInput && (
-              <button
-                onClick={handleRemoveFinish}
-                className="flex items-center gap-1 text-[10px] text-gray-500 hover:text-gray-700 cursor-pointer"
-              >
-                <span>Remove</span>
-                <svg 
-                  width="12" 
-                  height="12" 
-                  viewBox="0 0 24 24" 
-                  fill="none" 
-                  stroke="currentColor" 
-                  strokeWidth="2" 
-                  strokeLinecap="round" 
-                  strokeLinejoin="round"
-                >
-                  <path d="M3 6h18"></path>
-                  <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
-                  <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
-                </svg>
-              </button>
             )}
           </div>
         </div>
@@ -407,7 +549,7 @@ export const AgentCard: React.FC<AgentCardProps> = ({
             </div>
           </div>
 
-          {/* Expandable Case List - blue border */}
+          {/* Expandable Case List */}
           <button
             onClick={() => setIsExpanded(!isExpanded)}
             className="px-3 py-2 text-xs font-medium w-full rounded border border-blue-400 bg-white hover:bg-blue-50 text-gray-700 transition-colors flex items-center justify-center gap-1.5"
@@ -449,7 +591,7 @@ export const AgentCard: React.FC<AgentCardProps> = ({
                         isThisCaseExpanded ? 'border border-gray-300' : ''
                       }`}
                     >
-                      {/* Case Header - clickable when collapsed */}
+                      {/* Case Header */}
                       <div
                         onClick={() => !isThisCaseExpanded && handleCaseClick(caseData.id)}
                         className={`flex items-center justify-between p-2 ${
@@ -514,35 +656,34 @@ export const AgentCard: React.FC<AgentCardProps> = ({
                         )}
                       </div>
 
-                      {/* Expanded Content - Priority and Time Slot (no top border) */}
-{isThisCaseExpanded && (
-  <div className="px-2 pb-2 pt-1">
-    {/* Priority Dropdown */}
-    <div className="mb-2">
-      <label className="block text-xs font-medium text-gray-600 mb-1">
-        Priority
-      </label>
-      {/* ✅ UPDATED: Only 'normal' and 'high' options */}
-      <select
-        value={caseData.priority}
-        onChange={(e) =>
-          onPriorityChange(caseData.id, e.target.value as CasePriority)
-        }
-        className="w-full text-xs border border-gray-300 rounded px-2 py-1 bg-white cursor-pointer"
-      >
-        <option value="normal">Normal</option>
-        <option value="high">High</option>
-      </select>
-    </div>
+                      {/* Expanded Content - Priority and Time Slot */}
+                      {isThisCaseExpanded && (
+                        <div className="px-2 pb-2 pt-1">
+                          {/* Priority Dropdown */}
+                          <div className="mb-2">
+                            <label className="block text-xs font-medium text-gray-600 mb-1">
+                              Priority
+                            </label>
+                            <select
+                              value={caseData.priority}
+                              onChange={(e) =>
+                                onPriorityChange(caseData.id, e.target.value as CasePriority)
+                              }
+                              className="w-full text-xs border border-gray-300 rounded px-2 py-1 bg-white cursor-pointer"
+                            >
+                              <option value="normal">Normal</option>
+                              <option value="high">High</option>
+                            </select>
+                          </div>
 
-    {/* Time Slot Input */}
-    <TimeSlotInput
-      caseId={caseData.id}
-      deliverySlot={caseData.deliverySlot}
-      onSlotChange={onSlotChange}
-    />
-  </div>
-)}
+                          {/* Time Slot Input */}
+                          <TimeSlotInput
+                            caseId={caseData.id}
+                            deliverySlot={caseData.deliverySlot}
+                            onSlotChange={onSlotChange}
+                          />
+                        </div>
+                      )}
                     </div>
                   );
                 })}

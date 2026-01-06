@@ -1,4 +1,4 @@
-// components/ChangesPanel.tsx
+// components/ChangesPanel.tsx - UPDATED to show actual default postcode
 import React, { useEffect } from 'react';
 import type { CaseChange, PriorityChange, TimeSlotChange, AgentChange } from '../types/route';
 
@@ -40,6 +40,13 @@ const createAgentIcon = (color: string): string => {
 const PRIORITY_LABELS = {
   high: 'HIGH',
   normal: 'NORMAL',
+};
+
+// ✅ NEW: Helper function to extract default postcode from agent label
+const getDefaultPostcodeFromLabel = (agentLabel: string): string | null => {
+  // Agent label format: "Agent 1 (W6 9LI)"
+  const match = agentLabel.match(/\(([^)]+)\)/);
+  return match ? match[1] : null;
 };
 
 export const ChangesPanel: React.FC<ChangesPanelProps> = ({ 
@@ -98,6 +105,9 @@ export const ChangesPanel: React.FC<ChangesPanelProps> = ({
               const agentColor = ROUTE_COLORS[change.agentIndex % ROUTE_COLORS.length];
               const agentName = change.agentLabel.split(' (')[0];
               
+              // ✅ NEW: Extract default postcode from agent label
+              const defaultPostcode = getDefaultPostcodeFromLabel(change.agentLabel);
+              
               return (
                 <div 
                   key={`agent-${index}`}
@@ -116,6 +126,7 @@ export const ChangesPanel: React.FC<ChangesPanelProps> = ({
                     </div>
                     
                     <div>
+                      {/* Status Change (Active/Inactive) */}
                       {change.oldSettings.active !== change.newSettings.active && (
                         <>
                           <div className="text-[10px] text-gray-500 mb-0.5">Status</div>
@@ -131,6 +142,23 @@ export const ChangesPanel: React.FC<ChangesPanelProps> = ({
                         </>
                       )}
 
+                      {/* ✅ UPDATED: Start Location Change - Show actual postcode */}
+                      {change.oldSettings.startPostcode !== change.newSettings.startPostcode && (
+                        <>
+                          <div className="text-[10px] text-gray-500 mb-0.5">Start Location</div>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-medium text-gray-800">
+                              {change.oldSettings.startPostcode || defaultPostcode || 'Default'}
+                            </span>
+                            <span className="text-gray-400">→</span>
+                            <span className="font-medium text-gray-800">
+                              {change.newSettings.startPostcode || defaultPostcode || 'Default'}
+                            </span>
+                          </div>
+                        </>
+                      )}
+
+                      {/* Work Hours Change */}
                       {(change.oldSettings.startTime !== change.newSettings.startTime || 
                         change.oldSettings.endTime !== change.newSettings.endTime) && (
                         <>
@@ -147,6 +175,7 @@ export const ChangesPanel: React.FC<ChangesPanelProps> = ({
                         </>
                       )}
 
+                      {/* Lunch Break Change */}
                       {change.oldSettings.lunchDuration !== change.newSettings.lunchDuration && (
                         <>
                           <div className="text-[10px] text-gray-500 mb-0.5">Lunch Break</div>
@@ -162,6 +191,7 @@ export const ChangesPanel: React.FC<ChangesPanelProps> = ({
                         </>
                       )}
 
+                      {/* Finish Location Change */}
                       {change.oldSettings.finishPostcode !== change.newSettings.finishPostcode && (
                         <>
                           <div className="text-[10px] text-gray-500 mb-0.5">Finish Location</div>

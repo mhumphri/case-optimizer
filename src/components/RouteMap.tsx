@@ -1,4 +1,4 @@
-// components/RouteMap.tsx
+// RouteMap.tsx - COMPLETE FILE with editable start location support
 import React, { useState, useEffect, useRef } from 'react';
 import { GoogleMap, Marker, Polyline, InfoWindow, OverlayView } from '@react-google-maps/api';
 import type { Location, OptimizedRoute, CaseData, AgentSettings, CasePriority, TimeSlot } from '../types/route';
@@ -165,9 +165,15 @@ export const RouteMap: React.FC<RouteMapProps> = ({
       const bounds = new google.maps.LatLngBounds();
       let hasPoints = false;
 
-      agentLocations.forEach(location => {
-        bounds.extend({ lat: location.latitude, lng: location.longitude });
-        hasPoints = true;
+      // ✅ Add agent locations (use custom start if available)
+      agentLocations.forEach((defaultLocation, index) => {
+        const settings = agentSettings[index];
+        const startLocation = settings?.startLocation || defaultLocation;
+        
+        if (startLocation) {
+          bounds.extend({ lat: startLocation.latitude, lng: startLocation.longitude });
+          hasPoints = true;
+        }
       });
 
       agentSettings.forEach(settings => {
@@ -218,10 +224,14 @@ export const RouteMap: React.FC<RouteMapProps> = ({
   const getRoutePath = (route: OptimizedRoute, agentLocation: Location, agentIndex: number) => {
     const path = [];
 
-    if (agentLocation) {
+    // ✅ Use custom start location if available
+    const settings = agentSettings[agentIndex];
+    const startLocation = settings?.startLocation || agentLocation;
+
+    if (startLocation) {
       path.push({
-        lat: agentLocation.latitude,
-        lng: agentLocation.longitude,
+        lat: startLocation.latitude,
+        lng: startLocation.longitude,
       });
     }
 
@@ -234,8 +244,8 @@ export const RouteMap: React.FC<RouteMapProps> = ({
       }
     });
 
-    const finishLocation = agentSettings[agentIndex]?.finishLocation;
-    const endLocation = finishLocation || agentLocation;
+    const finishLocation = settings?.finishLocation;
+    const endLocation = finishLocation || startLocation;
     
     if (endLocation) {
       path.push({
@@ -253,7 +263,7 @@ export const RouteMap: React.FC<RouteMapProps> = ({
 
   const getCasePriority = (postcode: string): string => {
     const caseData = cases.find(c => c.postcode === postcode);
-    if (!caseData) return 'medium';
+    if (!caseData) return 'normal';
     
     // Use original priority from last optimization, not current priority with pending changes
     const originalData = originalCasePriorities.get(caseData.id);
@@ -373,22 +383,31 @@ export const RouteMap: React.FC<RouteMapProps> = ({
         disableDefaultUI: false,
       }}
     >
-      {agentLocations.map((location, index) => {
+      {/* Agent Start Markers */}
+      {agentLocations.map((defaultLocation, index) => {
         const color = ROUTE_COLORS[index % ROUTE_COLORS.length];
+        
+        // ✅ Use custom start location from settings if available
+        const settings = agentSettings[index];
+        const startLocation = settings?.startLocation || defaultLocation;
+        
+        if (!startLocation) return null;
+        
         return (
           <Marker
             key={`agent-start-${index}`}
             position={{
-              lat: location.latitude,
-              lng: location.longitude,
+              lat: startLocation.latitude,
+              lng: startLocation.longitude,
             }}
             icon={createAgentMarkerIcon(color)}
-            title={`Agent ${index + 1} Start`}
+            title={`Agent ${index + 1} Start${settings?.startPostcode ? ` (${settings.startPostcode})` : ''}`}
             zIndex={50}
           />
         );
       })}
 
+      {/* Agent Finish Markers */}
       {agentSettings.map((settings, index) => {
         if (!settings.finishLocation) return null;
         
@@ -407,6 +426,7 @@ export const RouteMap: React.FC<RouteMapProps> = ({
         );
       })}
 
+      {/* Case Location Markers for all routes */}
       {routes.map((route, routeIndex) =>
         route.visits.map((visit, visitIndex) => {
           if (!visit.arrivalLocation) return null;
@@ -505,8 +525,10 @@ export const RouteMap: React.FC<RouteMapProps> = ({
         })
       )}
 
+      {/* Unallocated Case Markers */}
       {unallocatedMarkers}
 
+      {/* Route Polylines for all agents */}
       {routes.map((route, index) => {
         if (!agentLocations[index] || route.visits.length === 0) return null;
 
