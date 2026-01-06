@@ -1,6 +1,6 @@
 import React from 'react';
 import type { CaseData, CasePriority, TimeSlot } from '../types/route';
-import { formatTime } from '../utils/formatters';
+import { formatTime, formatTimeWithoutSeconds } from '../utils/formatters';
 import { TimeSlotInput } from './TimeSlotInput';
 
 interface CaseCardProps {
@@ -17,34 +17,6 @@ const PRIORITY_COLORS = {
   high: 'bg-red-100 text-red-800 border-red-300',
   medium: 'bg-yellow-100 text-yellow-800 border-yellow-300',
   low: 'bg-green-100 text-green-800 border-green-300',
-};
-
-// Format time without seconds
-const formatTimeWithoutSeconds = (timestamp: string | { seconds: number } | any): string => {
-  try {
-    let date: Date;
-    
-    if (timestamp && typeof timestamp === 'object' && 'seconds' in timestamp) {
-      date = new Date(timestamp.seconds * 1000);
-    } else if (typeof timestamp === 'string') {
-      date = new Date(timestamp);
-    } else {
-      return '';
-    }
-    
-    if (isNaN(date.getTime())) {
-      return '';
-    }
-    
-    return date.toLocaleTimeString('en-GB', { 
-      hour: '2-digit', 
-      minute: '2-digit',
-      hour12: false 
-    });
-  } catch (error) {
-    console.error('Error formatting time:', error);
-    return '';
-  }
 };
 
 export const CaseCard: React.FC<CaseCardProps> = ({

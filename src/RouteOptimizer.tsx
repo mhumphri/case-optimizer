@@ -464,9 +464,8 @@ const RouteOptimizer: React.FC = () => {
       .filter(vehicle => vehicle !== null); // Remove null entries (inactive agents)
 
     // Set up time context for London timezone
-    const today = new Date();
-    const londonDate = new Date(today.toLocaleString('en-US', { timeZone: 'Europe/London' }));
-    londonDate.setHours(0, 0, 0, 0); // Start of day in London
+ const londonDate = new Date();
+londonDate.setUTCHours(0, 0, 0, 0);
 
     console.log('🌍 Setting global time context:');
     console.log(`  Start: ${londonDate.toISOString()}`);

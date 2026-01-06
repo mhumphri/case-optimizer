@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import type { OptimizedRoute, AgentSettings, CaseData, CasePriority, TimeSlot } from '../types/route';
 import { generateTimeOptions, generateLunchOptions } from '../utils/timeSlotGenerator';
+import { formatTimeWithoutSeconds } from '../utils/formatters';
 import { TimeSlotInput } from './TimeSlotInput';
 
 interface AgentCardProps {
@@ -49,34 +50,6 @@ const formatDurationHoursMinutes = (duration: string | { seconds: number } | any
     return `${hours}h ${minutes}m`;
   }
   return `${minutes}m`;
-};
-
-// Format time without seconds
-const formatTimeWithoutSeconds = (timestamp: string | { seconds: number } | any): string => {
-  try {
-    let date: Date;
-    
-    if (timestamp && typeof timestamp === 'object' && 'seconds' in timestamp) {
-      date = new Date(timestamp.seconds * 1000);
-    } else if (typeof timestamp === 'string') {
-      date = new Date(timestamp);
-    } else {
-      return '';
-    }
-    
-    if (isNaN(date.getTime())) {
-      return '';
-    }
-    
-    return date.toLocaleTimeString('en-GB', { 
-      hour: '2-digit', 
-      minute: '2-digit',
-      hour12: false 
-    });
-  } catch (error) {
-    console.error('Error formatting time:', error);
-    return '';
-  }
 };
 
 export const AgentCard: React.FC<AgentCardProps> = ({ 

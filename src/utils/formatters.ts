@@ -46,3 +46,33 @@ export const formatTime = (timestamp: string | { seconds: number } | any): strin
     return '';
   }
 };
+
+export const formatTimeWithoutSeconds = (timestamp: string | { seconds: number } | any): string => {
+  try {
+    let seconds: number;
+    
+    if (timestamp && typeof timestamp === 'object' && 'seconds' in timestamp) {
+      seconds = typeof timestamp.seconds === 'string' 
+        ? parseInt(timestamp.seconds) 
+        : timestamp.seconds;
+    } else if (typeof timestamp === 'string') {
+      const date = new Date(timestamp);
+      if (isNaN(date.getTime())) return '';
+      return date.toLocaleTimeString('en-GB', { 
+        hour: '2-digit', 
+        minute: '2-digit',
+        hour12: false 
+      });
+    } else {
+      return '';
+    }
+    
+    // Convert seconds since midnight to HH:MM
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+  } catch (error) {
+    console.error('Error formatting time:', error);
+    return '';
+  }
+};
