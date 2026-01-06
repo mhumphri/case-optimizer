@@ -1228,7 +1228,6 @@ const defaultCenter = {
   lng: -0.1278,
 };
 
-
 const mapStyles: google.maps.MapTypeStyle[] = [
   {
     featureType: 'poi.business',
@@ -1329,7 +1328,9 @@ export const RouteMap: React.FC<RouteMapProps> = ({
   const mapRef = useRef<google.maps.Map | null>(null);
 
   // Fit bounds to show all markers
-  useEffect(() => {
+useEffect(() => {
+  // Add a small delay to ensure map is fully loaded after remount
+  const timer = setTimeout(() => {
     if (!mapRef.current) return;
 
     const bounds = new google.maps.LatLngBounds();
@@ -1374,7 +1375,10 @@ export const RouteMap: React.FC<RouteMapProps> = ({
         right: 50,
       });
     }
-  }, [routes, agentLocations, unallocatedCases, routesVersion]);
+  }, 100); // 100ms delay to ensure map is ready
+
+  return () => clearTimeout(timer);
+}, [routes, agentLocations, unallocatedCases, routesVersion]);
 
   const getRoutePath = (route: OptimizedRoute, agentLocation: Location) => {
     const path = [];
@@ -1405,12 +1409,9 @@ export const RouteMap: React.FC<RouteMapProps> = ({
     return path;
   };
 
-  const getPolylineKey = (route: OptimizedRoute, index: number) => {
-    const visitCount = route.visits.length;
-    const firstVisit = route.visits[0]?.shipmentLabel || '';
-    const lastVisit = route.visits[route.visits.length - 1]?.shipmentLabel || '';
-    return `route-${index}-${visitCount}-${firstVisit}-${lastVisit}-v${routesVersion}`;
-  };
+const getPolylineKey = (index: number) => {
+  return `polyline-${index}-v${routesVersion}`;
+};
 
   // Helper to get case priority by postcode
   const getCasePriority = (postcode: string): string => {
@@ -1513,8 +1514,9 @@ export const RouteMap: React.FC<RouteMapProps> = ({
     });
 
   return (
-    <GoogleMap
-      mapContainerStyle={mapContainerStyle}
+<GoogleMap
+  key={`map-v${routesVersion}`} 
+  mapContainerStyle={mapContainerStyle}
       center={defaultCenter}
       zoom={11}
       onLoad={(map) => {
@@ -1657,15 +1659,15 @@ export const RouteMap: React.FC<RouteMapProps> = ({
         if (path.length < 2) return null;
 
         return (
-          <Polyline
-            key={getPolylineKey(route, index)}
-            path={path}
-            options={{
-              strokeColor: ROUTE_COLORS[index % ROUTE_COLORS.length],
-              strokeWeight: 3,
-              strokeOpacity: 0.7,
-            }}
-          />
+<Polyline
+  key={getPolylineKey(index)}  // Changed from getPolylineKey(route, index)
+  path={path}
+  options={{
+    strokeColor: ROUTE_COLORS[index % ROUTE_COLORS.length],
+    strokeWeight: 3,
+    strokeOpacity: 0.7,
+  }}
+/>
         );
       })}
     </GoogleMap>

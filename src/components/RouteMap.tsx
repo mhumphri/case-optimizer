@@ -22,190 +22,6 @@ const defaultCenter = {
   lng: -0.1278,
 };
 
-// Custom map style - dark and clean
-/*
-const mapStyles: google.maps.MapTypeStyle[] = [
-  {
-    featureType: 'all',
-    elementType: 'labels.text.fill',
-    stylers: [{ color: '#7c7c7c' }]
-  },
-  {
-    featureType: 'all',
-    elementType: 'labels.text.stroke',
-    stylers: [{ visibility: 'off' }]
-  },
-  {
-    featureType: 'administrative',
-    elementType: 'geometry',
-    stylers: [{ visibility: 'off' }]
-  },
-  {
-    featureType: 'administrative.land_parcel',
-    stylers: [{ visibility: 'off' }]
-  },
-  {
-    featureType: 'administrative.neighborhood',
-    stylers: [{ visibility: 'off' }]
-  },
-  {
-    featureType: 'landscape',
-    elementType: 'geometry',
-    stylers: [{ color: '#e8e8e8' }]
-  },
-  {
-    featureType: 'poi',
-    stylers: [{ visibility: 'off' }] // Hide all POI
-  },
-  {
-    featureType: 'road',
-    elementType: 'geometry',
-    stylers: [{ color: '#ffffff' }]
-  },
-  {
-    featureType: 'road',
-    elementType: 'labels.icon',
-    stylers: [{ visibility: 'off' }]
-  },
-  {
-    featureType: 'road.arterial',
-    elementType: 'geometry',
-    stylers: [{ color: '#fefefe' }]
-  },
-  {
-    featureType: 'road.highway',
-    elementType: 'geometry',
-    stylers: [{ color: '#ffffff' }]
-  },
-  {
-    featureType: 'road.highway',
-    elementType: 'geometry.stroke',
-    stylers: [{ color: '#d6d6d6' }]
-  },
-  {
-    featureType: 'road.local',
-    elementType: 'geometry',
-    stylers: [{ color: '#ffffff' }]
-  },
-  {
-    featureType: 'transit',
-    stylers: [{ visibility: 'off' }]
-  },
-  {
-    featureType: 'water',
-    elementType: 'geometry',
-    stylers: [{ color: '#c9d6de' }]
-  }
-];
-
-
-const mapStyles: google.maps.MapTypeStyle[] = [
-  {
-    featureType: 'poi',
-    elementType: 'labels',
-    stylers: [{ visibility: 'off' }] // Hide POI labels but keep parks/landmarks visible
-  },
-  {
-    featureType: 'poi.business',
-    stylers: [{ visibility: 'off' }]
-  },
-  {
-    featureType: 'transit',
-    elementType: 'labels',
-    stylers: [{ visibility: 'off' }]
-  },
-  {
-    featureType: 'road',
-    elementType: 'labels.icon',
-    stylers: [{ visibility: 'off' }]
-  },
-  {
-    featureType: 'landscape',
-    elementType: 'geometry',
-    stylers: [{ color: '#f0f0f0' }]
-  },
-  {
-    featureType: 'water',
-    elementType: 'geometry',
-    stylers: [{ color: '#b3d1ff' }]
-  },
-  {
-    featureType: 'road',
-    elementType: 'geometry',
-    stylers: [{ color: '#ffffff' }]
-  },
-  {
-    featureType: 'road.highway',
-    elementType: 'geometry',
-    stylers: [{ color: '#ffeb99' }]
-  },
-  {
-    featureType: 'poi.park',
-    elementType: 'geometry',
-    stylers: [{ color: '#d4e7d4' }]
-  }
-];
-
-const mapStyles: google.maps.MapTypeStyle[] = [
-  {
-    featureType: 'poi.business',
-    stylers: [{ visibility: 'off' }]
-  },
-  {
-    featureType: 'poi',
-    elementType: 'labels',
-    stylers: [{ visibility: 'off' }]
-  },
-  {
-    featureType: 'transit',
-    elementType: 'labels',
-    stylers: [{ visibility: 'off' }]
-  },
-  {
-    featureType: 'road',
-    elementType: 'labels.icon',
-    stylers: [{ visibility: 'off' }]
-  },
-  {
-    featureType: 'landscape',
-    elementType: 'geometry',
-    stylers: [{ color: '#f5f1e8' }]
-  },
-  {
-    featureType: 'water',
-    elementType: 'geometry',
-    stylers: [{ color: '#a8d8ea' }]
-  },
-  {
-    featureType: 'road',
-    elementType: 'geometry',
-    stylers: [{ color: '#ffffff' }]
-  },
-  {
-    featureType: 'road.highway',
-    elementType: 'geometry',
-    stylers: [{ color: '#ffe4b5' }]
-  },
-  {
-    featureType: 'poi.park',
-    elementType: 'geometry',
-    stylers: [{ color: '#d4e5d4' }]
-  },
-  {
-    featureType: 'all',
-    elementType: 'labels.text.fill',
-    stylers: [{ color: '#6b6b6b' }]
-  },
-  {
-    featureType: 'all',
-    elementType: 'labels.text.stroke',
-    stylers: [{ color: '#ffffff' }, { weight: 3 }]
-  }
-];
-*/
-
-
-
 const mapStyles: google.maps.MapTypeStyle[] = [
   {
     featureType: 'poi.business',
@@ -306,7 +122,9 @@ export const RouteMap: React.FC<RouteMapProps> = ({
   const mapRef = useRef<google.maps.Map | null>(null);
 
   // Fit bounds to show all markers
-  useEffect(() => {
+useEffect(() => {
+  // Add a small delay to ensure map is fully loaded after remount
+  const timer = setTimeout(() => {
     if (!mapRef.current) return;
 
     const bounds = new google.maps.LatLngBounds();
@@ -351,7 +169,10 @@ export const RouteMap: React.FC<RouteMapProps> = ({
         right: 50,
       });
     }
-  }, [routes, agentLocations, unallocatedCases, routesVersion]);
+  }, 100); // 100ms delay to ensure map is ready
+
+  return () => clearTimeout(timer);
+}, [routes, agentLocations, unallocatedCases, routesVersion]);
 
   const getRoutePath = (route: OptimizedRoute, agentLocation: Location) => {
     const path = [];
@@ -382,12 +203,9 @@ export const RouteMap: React.FC<RouteMapProps> = ({
     return path;
   };
 
-  const getPolylineKey = (route: OptimizedRoute, index: number) => {
-    const visitCount = route.visits.length;
-    const firstVisit = route.visits[0]?.shipmentLabel || '';
-    const lastVisit = route.visits[route.visits.length - 1]?.shipmentLabel || '';
-    return `route-${index}-${visitCount}-${firstVisit}-${lastVisit}-v${routesVersion}`;
-  };
+const getPolylineKey = (index: number) => {
+  return `polyline-${index}-v${routesVersion}`;
+};
 
   // Helper to get case priority by postcode
   const getCasePriority = (postcode: string): string => {
@@ -490,8 +308,9 @@ export const RouteMap: React.FC<RouteMapProps> = ({
     });
 
   return (
-    <GoogleMap
-      mapContainerStyle={mapContainerStyle}
+<GoogleMap
+  key={`map-v${routesVersion}`} 
+  mapContainerStyle={mapContainerStyle}
       center={defaultCenter}
       zoom={11}
       onLoad={(map) => {
@@ -634,15 +453,15 @@ export const RouteMap: React.FC<RouteMapProps> = ({
         if (path.length < 2) return null;
 
         return (
-          <Polyline
-            key={getPolylineKey(route, index)}
-            path={path}
-            options={{
-              strokeColor: ROUTE_COLORS[index % ROUTE_COLORS.length],
-              strokeWeight: 3,
-              strokeOpacity: 0.7,
-            }}
-          />
+<Polyline
+  key={getPolylineKey(index)}  // Changed from getPolylineKey(route, index)
+  path={path}
+  options={{
+    strokeColor: ROUTE_COLORS[index % ROUTE_COLORS.length],
+    strokeWeight: 3,
+    strokeOpacity: 0.7,
+  }}
+/>
         );
       })}
     </GoogleMap>
