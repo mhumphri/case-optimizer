@@ -19,9 +19,9 @@ const SCENARIOS: Record<ScenarioType, ScenarioConfig> = {
   },
   reduced: {
     name: 'Reduced Scenario',
-    description: '10 cases across 2 agents',
-    caseCount: 10,
-    agentPostcodes: ['W6 9LI', 'W2 3EL'], // Subset of full scenario agents
+    description: '8 cases across 2 agents',
+    caseCount: 8,
+    agentPostcodes: ['W6 9LI', 'SE14 5NP'], // Subset of full scenario agents
     defaultStartTime: '10:30',
     defaultEndTime: '14:00',
     defaultLunchDuration: 45,
