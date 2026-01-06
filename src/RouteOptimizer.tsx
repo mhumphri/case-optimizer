@@ -16,15 +16,17 @@ const SCENARIOS: Record<ScenarioType, ScenarioConfig> = {
     defaultStartTime: '09:00',
     defaultEndTime: '17:00',
     defaultLunchDuration: 45,
+    agentFinishPostcodes: ['SW1A 1AA', undefined, undefined, undefined, undefined, undefined],
   },
   reduced: {
     name: 'Reduced Scenario',
     description: '8 cases across 2 agents',
     caseCount: 8,
-    agentPostcodes: ['W6 9LI', 'SE14 5NP'], // Subset of full scenario agents
+    agentPostcodes: ['W6 9LI', 'SE14 5NP'],
     defaultStartTime: '10:30',
     defaultEndTime: '14:00',
     defaultLunchDuration: 45,
+    agentFinishPostcodes: ['EC1A 1BB', undefined],
   },
 };
 
@@ -40,6 +42,7 @@ const RouteOptimizer: React.FC = () => {
   const [selectedScenario, setSelectedScenario] = useState<ScenarioType | null>(null);
   const [unallocatedCases, setUnallocatedCases] = useState<Array<CaseData & { unallocatedNumber: number }>>([]);
   const [routesVersion, setRoutesVersion] = useState(0);
+  const [optimizedAgentSettings, setOptimizedAgentSettings] = useState<AgentSettings[]>([]);
 
   // Store original case data and agent settings for change tracking
   const originalCaseData = useRef<Map<string, { priority: CasePriority; deliverySlot?: TimeSlot }>>(new Map());
@@ -53,39 +56,31 @@ const RouteOptimizer: React.FC = () => {
   });
 
   const handlePriorityChange = (caseId: string, newPriority: CasePriority) => {
-    // Find the case first to get its current priority
     const targetCase = cases.find(c => c.id === caseId);
     if (!targetCase) return;
 
     const currentPriority = targetCase.priority;
 
-    // Only update if priority actually changed
     if (currentPriority !== newPriority) {
-      // Update the case priority
       setCases(prevCases =>
         prevCases.map(c =>
           c.id === caseId ? { ...c, priority: newPriority } : c
         )
       );
 
-      // Update changes list based on original priority
       setCaseChanges(prev => {
         const originalData = originalCaseData.current.get(caseId);
         if (!originalData) return prev;
 
         const originalPriority = originalData.priority;
-
-        // Remove any existing priority change for this case
         const filteredChanges = prev.filter(change =>
           !(change.caseId === caseId && 'oldPriority' in change)
         );
 
-        // If new priority is same as original, no change to track
         if (newPriority === originalPriority) {
           return filteredChanges;
         }
 
-        // Otherwise, add/update the priority change
         return [
           ...filteredChanges,
           {
@@ -104,38 +99,31 @@ const RouteOptimizer: React.FC = () => {
     const targetCase = cases.find(c => c.id === caseId);
     if (!targetCase) return;
 
-    // Update the case delivery slot
     setCases(prevCases =>
       prevCases.map(c =>
         c.id === caseId ? { ...c, deliverySlot: newSlot } : c
       )
     );
 
-    // Update changes list based on original slot
     setCaseChanges(prev => {
       const originalData = originalCaseData.current.get(caseId);
       if (!originalData) return prev;
 
       const originalSlot = originalData.deliverySlot;
-
-      // Remove any existing slot change for this case
       const filteredChanges = prev.filter(change =>
         !(change.caseId === caseId && 'oldSlot' in change)
       );
 
-      // Compare slots (considering undefined)
       const slotsEqual =
         (originalSlot === undefined && newSlot === undefined) ||
         (originalSlot && newSlot &&
           originalSlot.startTime === newSlot.startTime &&
           originalSlot.endTime === newSlot.endTime);
 
-      // If slot is same as original, no change to track
       if (slotsEqual) {
         return filteredChanges;
       }
 
-      // Otherwise, add/update the slot change
       return [
         ...filteredChanges,
         {
@@ -150,39 +138,33 @@ const RouteOptimizer: React.FC = () => {
   };
 
   const handleAgentSettingsChange = (agentIndex: number, newSettings: AgentSettings) => {
-    // Validation: start time cannot be after finish time (only if active)
     if (newSettings.active && newSettings.startTime >= newSettings.endTime) {
-      return; // Invalid, ignore the change
+      return;
     }
 
-    // Update agent settings
     setAgentSettings(prev => {
       const updated = [...prev];
       updated[agentIndex] = newSettings;
       return updated;
     });
 
-    // Update changes list based on original settings
     setAgentChanges(prev => {
       const originalSettings = originalAgentSettings.current[agentIndex];
       if (!originalSettings) return prev;
 
-      // Remove any existing change for this agent
       const filteredChanges = prev.filter(change => change.agentIndex !== agentIndex);
 
-      // Check if settings match original
       const settingsEqual =
         originalSettings.startTime === newSettings.startTime &&
         originalSettings.endTime === newSettings.endTime &&
         originalSettings.lunchDuration === newSettings.lunchDuration &&
-        originalSettings.active === newSettings.active;
+        originalSettings.active === newSettings.active &&
+        originalSettings.finishPostcode === newSettings.finishPostcode;
 
-      // If same as original, no change to track
       if (settingsEqual) {
         return filteredChanges;
       }
 
-      // Otherwise, add/update the agent change
       const route = optimizedRoutes[agentIndex];
       return [
         ...filteredChanges,
@@ -198,33 +180,28 @@ const RouteOptimizer: React.FC = () => {
   };
 
   const handleDeleteCaseChange = (caseId: string, changeType: 'priority' | 'slot') => {
-    // Get the original data
     const originalData = originalCaseData.current.get(caseId);
     if (!originalData) return;
 
     if (changeType === 'priority') {
-      // Restore the case to its original priority
       setCases(prevCases =>
         prevCases.map(c =>
           c.id === caseId ? { ...c, priority: originalData.priority } : c
         )
       );
 
-      // Remove the priority change from the list
       setCaseChanges(prev =>
         prev.filter(change =>
           !(change.caseId === caseId && 'oldPriority' in change)
         )
       );
     } else {
-      // Restore the case to its original slot
       setCases(prevCases =>
         prevCases.map(c =>
           c.id === caseId ? { ...c, deliverySlot: originalData.deliverySlot } : c
         )
       );
 
-      // Remove the slot change from the list
       setCaseChanges(prev =>
         prev.filter(change =>
           !(change.caseId === caseId && 'oldSlot' in change)
@@ -237,27 +214,21 @@ const RouteOptimizer: React.FC = () => {
     const originalSettings = originalAgentSettings.current[agentIndex];
     if (!originalSettings) return;
 
-    // Restore agent to original settings
     setAgentSettings(prev => {
       const updated = [...prev];
       updated[agentIndex] = originalSettings;
       return updated;
     });
 
-    // Remove the agent change from the list
     setAgentChanges(prev => prev.filter(change => change.agentIndex !== agentIndex));
   };
 
   const handleRecalculate = async () => {
     try {
-      // Re-run optimization with current case priorities/slots and agent settings
       await optimizeRoutes(cases, agentSettings);
-
-      // Clear changes lists only after successful recalculation
       setCaseChanges([]);
       setAgentChanges([]);
     } catch (error) {
-      // Keep changes visible if recalculation fails
       console.error('Recalculation failed:', error);
     }
   };
@@ -276,18 +247,15 @@ const RouteOptimizer: React.FC = () => {
     setLoading(true);
     setError('');
 
-    // Determine which scenario to use
     const scenario = scenarioType
       ? SCENARIOS[scenarioType]
       : currentScenarioConfig.current || SCENARIOS.full;
 
-    // Clear changes if this is a new optimization (not a recalculation)
     if (!existingCases) {
       setCaseChanges([]);
       setAgentChanges([]);
     }
 
-    // Import utilities
     const { generateMultiplePostcodes, timeToSeconds } = await import('./utils/locationGenerator');
     const { generateCasePriority } = await import('./utils/caseGenerator');
     const { getPenaltyCost } = await import('./utils/priorityMapping');
@@ -297,14 +265,12 @@ const RouteOptimizer: React.FC = () => {
     let initialCases: CaseData[];
     let currentAgentSettings: AgentSettings[];
 
-    // Use existing cases if recalculating, otherwise generate new ones
     if (existingCases && existingCases.length > 0) {
       initialCases = existingCases;
       currentAgentSettings = existingAgentSettings || agentSettings;
       console.log('🔄 Recalculating with updated priorities, slots, and agent settings...');
       console.log(`  ${caseChanges.length} case changes + ${agentChanges.length} agent changes to apply`);
 
-      // Log the changes
       caseChanges.forEach(change => {
         if ('oldPriority' in change) {
           console.log(`  - ${change.casePostcode}: priority ${change.oldPriority} → ${change.newPriority}`);
@@ -319,9 +285,11 @@ const RouteOptimizer: React.FC = () => {
         console.log(`  - ${change.agentLabel}:`);
         console.log(`    Hours: ${change.oldSettings.startTime}-${change.oldSettings.endTime} → ${change.newSettings.startTime}-${change.newSettings.endTime}`);
         console.log(`    Lunch: ${change.oldSettings.lunchDuration}min → ${change.newSettings.lunchDuration}min`);
+        if (change.oldSettings.finishPostcode !== change.newSettings.finishPostcode) {
+          console.log(`    Finish: ${change.oldSettings.finishPostcode || 'None'} → ${change.newSettings.finishPostcode || 'None'}`);
+        }
       });
     } else {
-      // Generate cases based on scenario
       console.log(`📍 Generating ${scenario.caseCount} unique cases from real postcodes...`);
       console.log(`  Scenario: ${scenario.name}`);
       console.log(`  Agents: ${scenario.agentPostcodes.length}`);
@@ -333,25 +301,31 @@ const RouteOptimizer: React.FC = () => {
         id: `case-${index + 1}`,
         postcode: postcodeCase.postcode,
         priority: generateCasePriority(),
-        deliverySlot: generateDeliverySlot(), // 1 in 12 cases get a delivery slot
+        deliverySlot: generateDeliverySlot(),
         status: 'pending' as const,
         assignedAgentIndex: null,
       }));
 
-      // Initialize agent settings with scenario defaults
-      currentAgentSettings = scenario.agentPostcodes.map(() => ({
+      currentAgentSettings = scenario.agentPostcodes.map((postcode, index) => ({
         startTime: scenario.defaultStartTime,
         endTime: scenario.defaultEndTime,
         lunchDuration: scenario.defaultLunchDuration,
-        active: true, // All agents start as active
+        active: true,
+        finishPostcode: scenario.agentFinishPostcodes?.[index],
+        finishLocation: undefined,
       }));
 
       setAgentSettings(currentAgentSettings);
       originalAgentSettings.current = currentAgentSettings.map(s => ({ ...s }));
 
-      // Geocode all postcodes (cases + agents)
       console.log('🌍 Geocoding postcodes...');
-      const allPostcodes = [...new Set([...postcodes.map(p => p.postcode), ...scenario.agentPostcodes])];
+      const allPostcodes = [
+        ...new Set([
+          ...postcodes.map(p => p.postcode),
+          ...scenario.agentPostcodes,
+          ...(scenario.agentFinishPostcodes?.filter(Boolean) || [])
+        ])
+      ];
 
       const geocodedLocations = await geocodePostcodes(allPostcodes, (completed, total) => {
         console.log(`  Geocoded ${completed}/${total} postcodes`);
@@ -359,23 +333,32 @@ const RouteOptimizer: React.FC = () => {
 
       console.log(`✅ Geocoded ${geocodedLocations.size} unique postcodes`);
 
-      // Add geocoded locations to cases
       initialCases = initialCases.map(c => ({
         ...c,
         location: geocodedLocations.get(c.postcode),
       }));
 
-      // Store original case data for change tracking
       originalCaseData.current = new Map(
         initialCases.map(c => [c.id, { priority: c.priority, deliverySlot: c.deliverySlot }])
       );
 
-      // Store geocoded agent locations
       const agentLocs = scenario.agentPostcodes.map(pc => geocodedLocations.get(pc)).filter(Boolean) as Location[];
       setAgentLocations(agentLocs);
+
+      currentAgentSettings = currentAgentSettings.map(settings => {
+        if (settings.finishPostcode) {
+          return {
+            ...settings,
+            finishLocation: geocodedLocations.get(settings.finishPostcode),
+          };
+        }
+        return settings;
+      });
+
+      setAgentSettings(currentAgentSettings);
+      originalAgentSettings.current = currentAgentSettings.map(s => ({ ...s }));
     }
 
-    // Filter out cases without coordinates
     const casesWithCoords = initialCases.filter(c => c.location);
     if (casesWithCoords.length < initialCases.length) {
       console.warn(`⚠️ ${initialCases.length - casesWithCoords.length} cases failed to geocode and will be skipped`);
@@ -389,9 +372,8 @@ const RouteOptimizer: React.FC = () => {
               latitude: caseData.location!.latitude,
               longitude: caseData.location!.longitude,
             },
-            duration: { seconds: 300 }, // 5 minutes per case
+            duration: { seconds: 300 },
             timeWindows: [
-              // Use shift time window from agent settings (will be set per vehicle below)
               {
                 startTime: { seconds: timeToSeconds('09:00') },
                 endTime: { seconds: timeToSeconds('17:00') },
@@ -400,11 +382,9 @@ const RouteOptimizer: React.FC = () => {
           },
         ],
         label: caseData.postcode,
-        // Penalty cost for NOT completing this delivery (based on priority)
         penaltyCost: getPenaltyCost(caseData.priority),
       };
 
-      // If case has a delivery slot, override with specific time window
       if (caseData.deliverySlot) {
         baseShipment.deliveries[0].timeWindows = [{
           startTime: { seconds: timeStringToSeconds(caseData.deliverySlot.startTime) },
@@ -415,35 +395,35 @@ const RouteOptimizer: React.FC = () => {
       return baseShipment;
     });
 
-    // Build vehicles with custom time windows per agent (only for active agents)
-    const activeAgentIndices: number[] = []; // Track which agents are active
+    const activeAgentIndices: number[] = [];
     const vehicles = scenario.agentPostcodes
       .map((postcode, index) => {
         const settings = currentAgentSettings[index];
 
-        // Skip inactive agents
         if (!settings.active) {
           return null;
         }
 
-        activeAgentIndices.push(index); // Track this agent's original index
+        activeAgentIndices.push(index);
 
         const shiftTimeWindow = {
           startTime: { seconds: timeToSeconds(settings.startTime) },
           endTime: { seconds: timeToSeconds(settings.endTime) },
         };
 
+        const endLocation = settings.finishLocation
+          ? settings.finishLocation
+          : agentLocations[index] || { latitude: 51.5074, longitude: -0.1278 };
+
         const vehicle: any = {
           startLocation: agentLocations[index] || { latitude: 51.5074, longitude: -0.1278 },
-          endLocation: agentLocations[index] || { latitude: 51.5074, longitude: -0.1278 },
+          endLocation: endLocation,
           label: `Agent ${index + 1} (${postcode})`,
           startTimeWindows: [shiftTimeWindow],
           endTimeWindows: [shiftTimeWindow],
         };
 
-        // Only add lunch break if duration > 0
         if (settings.lunchDuration > 0) {
-          // Lunch break starts at midpoint of shift
           const shiftStart = timeToSeconds(settings.startTime);
           const shiftEnd = timeToSeconds(settings.endTime);
           const shiftMidpoint = Math.floor((shiftStart + shiftEnd) / 2);
@@ -451,8 +431,8 @@ const RouteOptimizer: React.FC = () => {
           vehicle.breakRule = {
             breakRequests: [
               {
-                earliestStartTime: { seconds: shiftMidpoint - 1800 }, // 30 min before midpoint
-                latestStartTime: { seconds: shiftMidpoint + 1800 }, // 30 min after midpoint
+                earliestStartTime: { seconds: shiftMidpoint - 1800 },
+                latestStartTime: { seconds: shiftMidpoint + 1800 },
                 minDuration: { seconds: settings.lunchDuration * 60 },
               },
             ],
@@ -461,11 +441,10 @@ const RouteOptimizer: React.FC = () => {
 
         return vehicle;
       })
-      .filter(vehicle => vehicle !== null); // Remove null entries (inactive agents)
+      .filter(vehicle => vehicle !== null);
 
-    // Set up time context for London timezone
- const londonDate = new Date();
-londonDate.setUTCHours(0, 0, 0, 0);
+    const londonDate = new Date();
+    londonDate.setUTCHours(0, 0, 0, 0);
 
     console.log('🌍 Setting global time context:');
     console.log(`  Start: ${londonDate.toISOString()}`);
@@ -475,8 +454,6 @@ londonDate.setUTCHours(0, 0, 0, 0);
       model: {
         shipments,
         vehicles,
-        // Explicitly set the reference time for the optimization
-        // This ensures time windows are interpreted in London timezone
         globalStartTime: londonDate.toISOString(),
         globalEndTime: new Date(londonDate.getTime() + 24 * 60 * 60 * 1000).toISOString(),
       },
@@ -485,7 +462,6 @@ londonDate.setUTCHours(0, 0, 0, 0);
     try {
       console.log('📤 Sending optimization request...');
 
-      // Debug: Log sample shipment to verify structure
       if (shipments.length > 0) {
         console.log('📦 Sample shipment structure:', JSON.stringify(shipments[0], null, 2));
         const slotsCount = shipments.filter(s =>
@@ -494,7 +470,6 @@ londonDate.setUTCHours(0, 0, 0, 0);
         console.log(`  Cases with delivery slots: ${slotsCount}/${shipments.length}`);
       }
 
-      // Log priority distribution
       const priorityDistribution = {
         high: initialCases.filter(c => c.priority === 'high').length,
         medium: initialCases.filter(c => c.priority === 'medium').length,
@@ -503,11 +478,11 @@ londonDate.setUTCHours(0, 0, 0, 0);
       console.log('📊 Priority Distribution:', priorityDistribution);
       console.log('💰 Penalty Costs: High=£1000, Medium=£300, Low=£100');
 
-      // Log agent settings
       console.log('👤 Agent Settings:');
       currentAgentSettings.forEach((settings, index) => {
         if (settings.active) {
-          console.log(`  Agent ${index + 1}: ${settings.startTime}-${settings.endTime}, ${settings.lunchDuration}min lunch [ACTIVE]`);
+          const finishInfo = settings.finishPostcode ? ` → ${settings.finishPostcode}` : ' (returns to start)';
+          console.log(`  Agent ${index + 1}: ${settings.startTime}-${settings.endTime}, ${settings.lunchDuration}min lunch${finishInfo} [ACTIVE]`);
         } else {
           console.log(`  Agent ${index + 1}: [INACTIVE]`);
         }
@@ -549,13 +524,10 @@ londonDate.setUTCHours(0, 0, 0, 0);
         },
       })) || [];
 
-      // Create a full routes array with placeholders for inactive agents
-      // This ensures route indices match agent indices
       const fullRoutes: OptimizedRoute[] = scenario.agentPostcodes.map((postcode, index) => {
         const settings = currentAgentSettings[index];
 
         if (!settings.active) {
-          // Inactive agent - create empty route placeholder
           return {
             vehicleLabel: `Agent ${index + 1} (${postcode})`,
             visits: [],
@@ -566,7 +538,6 @@ londonDate.setUTCHours(0, 0, 0, 0);
           };
         }
 
-        // Active agent - find corresponding route from API response
         const apiRouteIndex = activeAgentIndices.indexOf(index);
         return routes[apiRouteIndex] || {
           vehicleLabel: `Agent ${index + 1} (${postcode})`,
@@ -578,16 +549,12 @@ londonDate.setUTCHours(0, 0, 0, 0);
         };
       });
 
-      // Update case assignments based on optimization results
       const updatedCases = initialCases.map(caseData => {
-        // Find which agent was assigned this case and when
         let assignedRouteIndex = -1;
         let deliveryTime: string | { seconds: number } | undefined = undefined;
 
-        // Search through all routes (including inactive placeholders)
         for (let routeIdx = 0; routeIdx < fullRoutes.length; routeIdx++) {
           const visit = fullRoutes[routeIdx].visits.find(v => {
-            // Match by postcode label
             return v.shipmentLabel === caseData.postcode;
           });
 
@@ -607,7 +574,18 @@ londonDate.setUTCHours(0, 0, 0, 0);
 
       setOptimizedRoutes(fullRoutes);
       setCases(updatedCases);
-      setRoutesVersion(prev => prev + 1); 
+      setRoutesVersion(prev => prev + 1);
+      
+      // Update optimized agent settings - these are what the map will display
+      setOptimizedAgentSettings(currentAgentSettings.map(s => ({ ...s })));
+      
+      // Update original case data to reflect the priorities/slots used in this optimization
+      originalCaseData.current = new Map(
+        updatedCases.map(c => [c.id, { priority: c.priority, deliverySlot: c.deliverySlot }])
+      );
+      
+      // Update original agent settings to reflect settings used in this optimization
+      originalAgentSettings.current = currentAgentSettings.map(s => ({ ...s }));
     } catch (err) {
       console.error('❌ Error:', err);
       setError(err instanceof Error ? err.message : 'An error occurred');
@@ -619,7 +597,6 @@ londonDate.setUTCHours(0, 0, 0, 0);
   if (loadError) {
     return (
       <div className="flex items-center justify-center h-screen bg-gray-100">
-        {/* Error Content */}
         <div className="text-center p-8 bg-white rounded-lg shadow-lg">
           <h2 className="text-xl font-bold text-red-600 mb-4">❌ Map Loading Error:</h2>
           <p className="text-gray-700">Failed to load Google Maps. Please check your API key.</p>
@@ -632,9 +609,7 @@ londonDate.setUTCHours(0, 0, 0, 0);
     <div className="flex flex-col h-screen bg-gray-50">
       <Header />
 
-      {/* Two Column Layout - fills remaining space */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Left Column - Map */}
         <div className="flex-1 relative">
           {!googleMapsApiKey && (
             <div className="absolute inset-0 flex items-center justify-center bg-gray-100 z-10">
@@ -647,7 +622,6 @@ londonDate.setUTCHours(0, 0, 0, 0);
             </div>
           )}
 
-          {/* Scenario Selection - Only show when no routes optimized */}
           {optimizedRoutes.length === 0 && !loading && (
             <div className="absolute inset-0 flex items-center justify-center bg-gray-50 z-10">
               <div className="max-w-4xl w-full px-8">
@@ -656,7 +630,6 @@ londonDate.setUTCHours(0, 0, 0, 0);
                 </h1>
 
                 <div className="grid md:grid-cols-2 gap-6">
-                  {/* Full Scenario Card */}
                   <div className="bg-white rounded-lg shadow-lg p-6 border-2 border-blue-200 hover:border-blue-400 transition-colors">
                     <h2 className="text-2xl font-bold text-blue-600 mb-4">📊 Full Scenario</h2>
                     <ul className="space-y-2 mb-6 text-gray-700">
@@ -666,6 +639,7 @@ londonDate.setUTCHours(0, 0, 0, 0);
                       <li>✓ 45-minute lunch break</li>
                       <li>✓ Priority-based optimization</li>
                       <li>✓ ~1 in 12 cases with delivery slots</li>
+                      <li>✓ Agent 1 finishes at SW1A 1AA</li>
                     </ul>
                     <button
                       onClick={() => handleScenarioSelect('full')}
@@ -675,16 +649,16 @@ londonDate.setUTCHours(0, 0, 0, 0);
                     </button>
                   </div>
 
-                  {/* Reduced Scenario Card */}
                   <div className="bg-white rounded-lg shadow-lg p-6 border-2 border-green-200 hover:border-green-400 transition-colors">
                     <h2 className="text-2xl font-bold text-green-600 mb-4">📉 Reduced Scenario</h2>
                     <ul className="space-y-2 mb-6 text-gray-700">
-                      <li>✓ 15 cases across London</li>
-                      <li>✓ 2 agents (W6 9LI, W2 3EL)</li>
-                      <li>✓ Default hours: 11:30-14:00</li>
+                      <li>✓ 8 cases across London</li>
+                      <li>✓ 2 agents (W6 9LI, SE14 5NP)</li>
+                      <li>✓ Default hours: 10:30-14:00</li>
                       <li>✓ 45-minute lunch break</li>
                       <li>✓ Priority-based optimization</li>
                       <li>✓ ~1 in 12 cases with delivery slots</li>
+                      <li>✓ Agent 1 finishes at EC1A 1BB</li>
                     </ul>
                     <button
                       onClick={() => handleScenarioSelect('reduced')}
@@ -702,7 +676,6 @@ londonDate.setUTCHours(0, 0, 0, 0);
             </div>
           )}
 
-          {/* Loading State */}
           {loading && optimizedRoutes.length === 0 && (
             <div className="absolute inset-0 flex items-center justify-center bg-gray-50 z-10">
               <div className="text-center">
@@ -711,7 +684,7 @@ londonDate.setUTCHours(0, 0, 0, 0);
                 <p className="text-gray-600">
                   {selectedScenario === 'full'
                     ? 'Processing 200 cases across 6 agents'
-                    : 'Processing 40 cases across 2 agents'}
+                    : 'Processing 8 cases across 2 agents'}
                 </p>
               </div>
             </div>
@@ -726,20 +699,20 @@ londonDate.setUTCHours(0, 0, 0, 0);
             </div>
           )}
 
-          {/* Map Section - Fill entire container */}
           {optimizedRoutes.length > 0 && googleMapsApiKey && isLoaded && (
             <div className="relative w-full h-full">
-<RouteMap
-  routes={optimizedRoutes}
-  agentLocations={agentLocations}
-  cases={cases}
-  unallocatedCases={unallocatedCases}
-  routesVersion={routesVersion}
-/>
+              <RouteMap
+                routes={optimizedRoutes}
+                agentLocations={agentLocations}
+                cases={cases}
+                unallocatedCases={unallocatedCases}
+                routesVersion={routesVersion}
+                agentSettings={optimizedAgentSettings}
+                originalCasePriorities={originalCaseData.current}
+              />
             </div>
           )}
 
-          {/* Map Loading State */}
           {optimizedRoutes.length > 0 && googleMapsApiKey && !isLoaded && (
             <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
               <div className="text-lg text-gray-700">Loading map...</div>
@@ -747,7 +720,6 @@ londonDate.setUTCHours(0, 0, 0, 0);
           )}
         </div>
 
-        {/* Right Column - Tabbed Interface */}
         {optimizedRoutes.length > 0 && (
           <div className="w-[400px] border-l border-gray-200 bg-white">
             <RouteDetails

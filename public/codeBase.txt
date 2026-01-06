@@ -28,15 +28,17 @@ const SCENARIOS: Record<ScenarioType, ScenarioConfig> = {
     defaultStartTime: '09:00',
     defaultEndTime: '17:00',
     defaultLunchDuration: 45,
+    agentFinishPostcodes: ['SW1A 1AA', undefined, undefined, undefined, undefined, undefined],
   },
   reduced: {
     name: 'Reduced Scenario',
     description: '8 cases across 2 agents',
     caseCount: 8,
-    agentPostcodes: ['W6 9LI', 'SE14 5NP'], // Subset of full scenario agents
+    agentPostcodes: ['W6 9LI', 'SE14 5NP'],
     defaultStartTime: '10:30',
     defaultEndTime: '14:00',
     defaultLunchDuration: 45,
+    agentFinishPostcodes: ['EC1A 1BB', undefined],
   },
 };
 
@@ -52,6 +54,7 @@ const RouteOptimizer: React.FC = () => {
   const [selectedScenario, setSelectedScenario] = useState<ScenarioType | null>(null);
   const [unallocatedCases, setUnallocatedCases] = useState<Array<CaseData & { unallocatedNumber: number }>>([]);
   const [routesVersion, setRoutesVersion] = useState(0);
+  const [optimizedAgentSettings, setOptimizedAgentSettings] = useState<AgentSettings[]>([]);
 
   // Store original case data and agent settings for change tracking
   const originalCaseData = useRef<Map<string, { priority: CasePriority; deliverySlot?: TimeSlot }>>(new Map());
@@ -65,39 +68,31 @@ const RouteOptimizer: React.FC = () => {
   });
 
   const handlePriorityChange = (caseId: string, newPriority: CasePriority) => {
-    // Find the case first to get its current priority
     const targetCase = cases.find(c => c.id === caseId);
     if (!targetCase) return;
 
     const currentPriority = targetCase.priority;
 
-    // Only update if priority actually changed
     if (currentPriority !== newPriority) {
-      // Update the case priority
       setCases(prevCases =>
         prevCases.map(c =>
           c.id === caseId ? { ...c, priority: newPriority } : c
         )
       );
 
-      // Update changes list based on original priority
       setCaseChanges(prev => {
         const originalData = originalCaseData.current.get(caseId);
         if (!originalData) return prev;
 
         const originalPriority = originalData.priority;
-
-        // Remove any existing priority change for this case
         const filteredChanges = prev.filter(change =>
           !(change.caseId === caseId && 'oldPriority' in change)
         );
 
-        // If new priority is same as original, no change to track
         if (newPriority === originalPriority) {
           return filteredChanges;
         }
 
-        // Otherwise, add/update the priority change
         return [
           ...filteredChanges,
           {
@@ -116,38 +111,31 @@ const RouteOptimizer: React.FC = () => {
     const targetCase = cases.find(c => c.id === caseId);
     if (!targetCase) return;
 
-    // Update the case delivery slot
     setCases(prevCases =>
       prevCases.map(c =>
         c.id === caseId ? { ...c, deliverySlot: newSlot } : c
       )
     );
 
-    // Update changes list based on original slot
     setCaseChanges(prev => {
       const originalData = originalCaseData.current.get(caseId);
       if (!originalData) return prev;
 
       const originalSlot = originalData.deliverySlot;
-
-      // Remove any existing slot change for this case
       const filteredChanges = prev.filter(change =>
         !(change.caseId === caseId && 'oldSlot' in change)
       );
 
-      // Compare slots (considering undefined)
       const slotsEqual =
         (originalSlot === undefined && newSlot === undefined) ||
         (originalSlot && newSlot &&
           originalSlot.startTime === newSlot.startTime &&
           originalSlot.endTime === newSlot.endTime);
 
-      // If slot is same as original, no change to track
       if (slotsEqual) {
         return filteredChanges;
       }
 
-      // Otherwise, add/update the slot change
       return [
         ...filteredChanges,
         {
@@ -162,39 +150,33 @@ const RouteOptimizer: React.FC = () => {
   };
 
   const handleAgentSettingsChange = (agentIndex: number, newSettings: AgentSettings) => {
-    // Validation: start time cannot be after finish time (only if active)
     if (newSettings.active && newSettings.startTime >= newSettings.endTime) {
-      return; // Invalid, ignore the change
+      return;
     }
 
-    // Update agent settings
     setAgentSettings(prev => {
       const updated = [...prev];
       updated[agentIndex] = newSettings;
       return updated;
     });
 
-    // Update changes list based on original settings
     setAgentChanges(prev => {
       const originalSettings = originalAgentSettings.current[agentIndex];
       if (!originalSettings) return prev;
 
-      // Remove any existing change for this agent
       const filteredChanges = prev.filter(change => change.agentIndex !== agentIndex);
 
-      // Check if settings match original
       const settingsEqual =
         originalSettings.startTime === newSettings.startTime &&
         originalSettings.endTime === newSettings.endTime &&
         originalSettings.lunchDuration === newSettings.lunchDuration &&
-        originalSettings.active === newSettings.active;
+        originalSettings.active === newSettings.active &&
+        originalSettings.finishPostcode === newSettings.finishPostcode;
 
-      // If same as original, no change to track
       if (settingsEqual) {
         return filteredChanges;
       }
 
-      // Otherwise, add/update the agent change
       const route = optimizedRoutes[agentIndex];
       return [
         ...filteredChanges,
@@ -210,33 +192,28 @@ const RouteOptimizer: React.FC = () => {
   };
 
   const handleDeleteCaseChange = (caseId: string, changeType: 'priority' | 'slot') => {
-    // Get the original data
     const originalData = originalCaseData.current.get(caseId);
     if (!originalData) return;
 
     if (changeType === 'priority') {
-      // Restore the case to its original priority
       setCases(prevCases =>
         prevCases.map(c =>
           c.id === caseId ? { ...c, priority: originalData.priority } : c
         )
       );
 
-      // Remove the priority change from the list
       setCaseChanges(prev =>
         prev.filter(change =>
           !(change.caseId === caseId && 'oldPriority' in change)
         )
       );
     } else {
-      // Restore the case to its original slot
       setCases(prevCases =>
         prevCases.map(c =>
           c.id === caseId ? { ...c, deliverySlot: originalData.deliverySlot } : c
         )
       );
 
-      // Remove the slot change from the list
       setCaseChanges(prev =>
         prev.filter(change =>
           !(change.caseId === caseId && 'oldSlot' in change)
@@ -249,27 +226,21 @@ const RouteOptimizer: React.FC = () => {
     const originalSettings = originalAgentSettings.current[agentIndex];
     if (!originalSettings) return;
 
-    // Restore agent to original settings
     setAgentSettings(prev => {
       const updated = [...prev];
       updated[agentIndex] = originalSettings;
       return updated;
     });
 
-    // Remove the agent change from the list
     setAgentChanges(prev => prev.filter(change => change.agentIndex !== agentIndex));
   };
 
   const handleRecalculate = async () => {
     try {
-      // Re-run optimization with current case priorities/slots and agent settings
       await optimizeRoutes(cases, agentSettings);
-
-      // Clear changes lists only after successful recalculation
       setCaseChanges([]);
       setAgentChanges([]);
     } catch (error) {
-      // Keep changes visible if recalculation fails
       console.error('Recalculation failed:', error);
     }
   };
@@ -288,18 +259,15 @@ const RouteOptimizer: React.FC = () => {
     setLoading(true);
     setError('');
 
-    // Determine which scenario to use
     const scenario = scenarioType
       ? SCENARIOS[scenarioType]
       : currentScenarioConfig.current || SCENARIOS.full;
 
-    // Clear changes if this is a new optimization (not a recalculation)
     if (!existingCases) {
       setCaseChanges([]);
       setAgentChanges([]);
     }
 
-    // Import utilities
     const { generateMultiplePostcodes, timeToSeconds } = await import('./utils/locationGenerator');
     const { generateCasePriority } = await import('./utils/caseGenerator');
     const { getPenaltyCost } = await import('./utils/priorityMapping');
@@ -309,14 +277,12 @@ const RouteOptimizer: React.FC = () => {
     let initialCases: CaseData[];
     let currentAgentSettings: AgentSettings[];
 
-    // Use existing cases if recalculating, otherwise generate new ones
     if (existingCases && existingCases.length > 0) {
       initialCases = existingCases;
       currentAgentSettings = existingAgentSettings || agentSettings;
       console.log('🔄 Recalculating with updated priorities, slots, and agent settings...');
       console.log(`  ${caseChanges.length} case changes + ${agentChanges.length} agent changes to apply`);
 
-      // Log the changes
       caseChanges.forEach(change => {
         if ('oldPriority' in change) {
           console.log(`  - ${change.casePostcode}: priority ${change.oldPriority} → ${change.newPriority}`);
@@ -331,9 +297,11 @@ const RouteOptimizer: React.FC = () => {
         console.log(`  - ${change.agentLabel}:`);
         console.log(`    Hours: ${change.oldSettings.startTime}-${change.oldSettings.endTime} → ${change.newSettings.startTime}-${change.newSettings.endTime}`);
         console.log(`    Lunch: ${change.oldSettings.lunchDuration}min → ${change.newSettings.lunchDuration}min`);
+        if (change.oldSettings.finishPostcode !== change.newSettings.finishPostcode) {
+          console.log(`    Finish: ${change.oldSettings.finishPostcode || 'None'} → ${change.newSettings.finishPostcode || 'None'}`);
+        }
       });
     } else {
-      // Generate cases based on scenario
       console.log(`📍 Generating ${scenario.caseCount} unique cases from real postcodes...`);
       console.log(`  Scenario: ${scenario.name}`);
       console.log(`  Agents: ${scenario.agentPostcodes.length}`);
@@ -345,25 +313,31 @@ const RouteOptimizer: React.FC = () => {
         id: `case-${index + 1}`,
         postcode: postcodeCase.postcode,
         priority: generateCasePriority(),
-        deliverySlot: generateDeliverySlot(), // 1 in 12 cases get a delivery slot
+        deliverySlot: generateDeliverySlot(),
         status: 'pending' as const,
         assignedAgentIndex: null,
       }));
 
-      // Initialize agent settings with scenario defaults
-      currentAgentSettings = scenario.agentPostcodes.map(() => ({
+      currentAgentSettings = scenario.agentPostcodes.map((postcode, index) => ({
         startTime: scenario.defaultStartTime,
         endTime: scenario.defaultEndTime,
         lunchDuration: scenario.defaultLunchDuration,
-        active: true, // All agents start as active
+        active: true,
+        finishPostcode: scenario.agentFinishPostcodes?.[index],
+        finishLocation: undefined,
       }));
 
       setAgentSettings(currentAgentSettings);
       originalAgentSettings.current = currentAgentSettings.map(s => ({ ...s }));
 
-      // Geocode all postcodes (cases + agents)
       console.log('🌍 Geocoding postcodes...');
-      const allPostcodes = [...new Set([...postcodes.map(p => p.postcode), ...scenario.agentPostcodes])];
+      const allPostcodes = [
+        ...new Set([
+          ...postcodes.map(p => p.postcode),
+          ...scenario.agentPostcodes,
+          ...(scenario.agentFinishPostcodes?.filter(Boolean) || [])
+        ])
+      ];
 
       const geocodedLocations = await geocodePostcodes(allPostcodes, (completed, total) => {
         console.log(`  Geocoded ${completed}/${total} postcodes`);
@@ -371,23 +345,32 @@ const RouteOptimizer: React.FC = () => {
 
       console.log(`✅ Geocoded ${geocodedLocations.size} unique postcodes`);
 
-      // Add geocoded locations to cases
       initialCases = initialCases.map(c => ({
         ...c,
         location: geocodedLocations.get(c.postcode),
       }));
 
-      // Store original case data for change tracking
       originalCaseData.current = new Map(
         initialCases.map(c => [c.id, { priority: c.priority, deliverySlot: c.deliverySlot }])
       );
 
-      // Store geocoded agent locations
       const agentLocs = scenario.agentPostcodes.map(pc => geocodedLocations.get(pc)).filter(Boolean) as Location[];
       setAgentLocations(agentLocs);
+
+      currentAgentSettings = currentAgentSettings.map(settings => {
+        if (settings.finishPostcode) {
+          return {
+            ...settings,
+            finishLocation: geocodedLocations.get(settings.finishPostcode),
+          };
+        }
+        return settings;
+      });
+
+      setAgentSettings(currentAgentSettings);
+      originalAgentSettings.current = currentAgentSettings.map(s => ({ ...s }));
     }
 
-    // Filter out cases without coordinates
     const casesWithCoords = initialCases.filter(c => c.location);
     if (casesWithCoords.length < initialCases.length) {
       console.warn(`⚠️ ${initialCases.length - casesWithCoords.length} cases failed to geocode and will be skipped`);
@@ -401,9 +384,8 @@ const RouteOptimizer: React.FC = () => {
               latitude: caseData.location!.latitude,
               longitude: caseData.location!.longitude,
             },
-            duration: { seconds: 300 }, // 5 minutes per case
+            duration: { seconds: 300 },
             timeWindows: [
-              // Use shift time window from agent settings (will be set per vehicle below)
               {
                 startTime: { seconds: timeToSeconds('09:00') },
                 endTime: { seconds: timeToSeconds('17:00') },
@@ -412,11 +394,9 @@ const RouteOptimizer: React.FC = () => {
           },
         ],
         label: caseData.postcode,
-        // Penalty cost for NOT completing this delivery (based on priority)
         penaltyCost: getPenaltyCost(caseData.priority),
       };
 
-      // If case has a delivery slot, override with specific time window
       if (caseData.deliverySlot) {
         baseShipment.deliveries[0].timeWindows = [{
           startTime: { seconds: timeStringToSeconds(caseData.deliverySlot.startTime) },
@@ -427,35 +407,35 @@ const RouteOptimizer: React.FC = () => {
       return baseShipment;
     });
 
-    // Build vehicles with custom time windows per agent (only for active agents)
-    const activeAgentIndices: number[] = []; // Track which agents are active
+    const activeAgentIndices: number[] = [];
     const vehicles = scenario.agentPostcodes
       .map((postcode, index) => {
         const settings = currentAgentSettings[index];
 
-        // Skip inactive agents
         if (!settings.active) {
           return null;
         }
 
-        activeAgentIndices.push(index); // Track this agent's original index
+        activeAgentIndices.push(index);
 
         const shiftTimeWindow = {
           startTime: { seconds: timeToSeconds(settings.startTime) },
           endTime: { seconds: timeToSeconds(settings.endTime) },
         };
 
+        const endLocation = settings.finishLocation
+          ? settings.finishLocation
+          : agentLocations[index] || { latitude: 51.5074, longitude: -0.1278 };
+
         const vehicle: any = {
           startLocation: agentLocations[index] || { latitude: 51.5074, longitude: -0.1278 },
-          endLocation: agentLocations[index] || { latitude: 51.5074, longitude: -0.1278 },
+          endLocation: endLocation,
           label: `Agent ${index + 1} (${postcode})`,
           startTimeWindows: [shiftTimeWindow],
           endTimeWindows: [shiftTimeWindow],
         };
 
-        // Only add lunch break if duration > 0
         if (settings.lunchDuration > 0) {
-          // Lunch break starts at midpoint of shift
           const shiftStart = timeToSeconds(settings.startTime);
           const shiftEnd = timeToSeconds(settings.endTime);
           const shiftMidpoint = Math.floor((shiftStart + shiftEnd) / 2);
@@ -463,8 +443,8 @@ const RouteOptimizer: React.FC = () => {
           vehicle.breakRule = {
             breakRequests: [
               {
-                earliestStartTime: { seconds: shiftMidpoint - 1800 }, // 30 min before midpoint
-                latestStartTime: { seconds: shiftMidpoint + 1800 }, // 30 min after midpoint
+                earliestStartTime: { seconds: shiftMidpoint - 1800 },
+                latestStartTime: { seconds: shiftMidpoint + 1800 },
                 minDuration: { seconds: settings.lunchDuration * 60 },
               },
             ],
@@ -473,11 +453,10 @@ const RouteOptimizer: React.FC = () => {
 
         return vehicle;
       })
-      .filter(vehicle => vehicle !== null); // Remove null entries (inactive agents)
+      .filter(vehicle => vehicle !== null);
 
-    // Set up time context for London timezone
- const londonDate = new Date();
-londonDate.setUTCHours(0, 0, 0, 0);
+    const londonDate = new Date();
+    londonDate.setUTCHours(0, 0, 0, 0);
 
     console.log('🌍 Setting global time context:');
     console.log(`  Start: ${londonDate.toISOString()}`);
@@ -487,8 +466,6 @@ londonDate.setUTCHours(0, 0, 0, 0);
       model: {
         shipments,
         vehicles,
-        // Explicitly set the reference time for the optimization
-        // This ensures time windows are interpreted in London timezone
         globalStartTime: londonDate.toISOString(),
         globalEndTime: new Date(londonDate.getTime() + 24 * 60 * 60 * 1000).toISOString(),
       },
@@ -497,7 +474,6 @@ londonDate.setUTCHours(0, 0, 0, 0);
     try {
       console.log('📤 Sending optimization request...');
 
-      // Debug: Log sample shipment to verify structure
       if (shipments.length > 0) {
         console.log('📦 Sample shipment structure:', JSON.stringify(shipments[0], null, 2));
         const slotsCount = shipments.filter(s =>
@@ -506,7 +482,6 @@ londonDate.setUTCHours(0, 0, 0, 0);
         console.log(`  Cases with delivery slots: ${slotsCount}/${shipments.length}`);
       }
 
-      // Log priority distribution
       const priorityDistribution = {
         high: initialCases.filter(c => c.priority === 'high').length,
         medium: initialCases.filter(c => c.priority === 'medium').length,
@@ -515,11 +490,11 @@ londonDate.setUTCHours(0, 0, 0, 0);
       console.log('📊 Priority Distribution:', priorityDistribution);
       console.log('💰 Penalty Costs: High=£1000, Medium=£300, Low=£100');
 
-      // Log agent settings
       console.log('👤 Agent Settings:');
       currentAgentSettings.forEach((settings, index) => {
         if (settings.active) {
-          console.log(`  Agent ${index + 1}: ${settings.startTime}-${settings.endTime}, ${settings.lunchDuration}min lunch [ACTIVE]`);
+          const finishInfo = settings.finishPostcode ? ` → ${settings.finishPostcode}` : ' (returns to start)';
+          console.log(`  Agent ${index + 1}: ${settings.startTime}-${settings.endTime}, ${settings.lunchDuration}min lunch${finishInfo} [ACTIVE]`);
         } else {
           console.log(`  Agent ${index + 1}: [INACTIVE]`);
         }
@@ -561,13 +536,10 @@ londonDate.setUTCHours(0, 0, 0, 0);
         },
       })) || [];
 
-      // Create a full routes array with placeholders for inactive agents
-      // This ensures route indices match agent indices
       const fullRoutes: OptimizedRoute[] = scenario.agentPostcodes.map((postcode, index) => {
         const settings = currentAgentSettings[index];
 
         if (!settings.active) {
-          // Inactive agent - create empty route placeholder
           return {
             vehicleLabel: `Agent ${index + 1} (${postcode})`,
             visits: [],
@@ -578,7 +550,6 @@ londonDate.setUTCHours(0, 0, 0, 0);
           };
         }
 
-        // Active agent - find corresponding route from API response
         const apiRouteIndex = activeAgentIndices.indexOf(index);
         return routes[apiRouteIndex] || {
           vehicleLabel: `Agent ${index + 1} (${postcode})`,
@@ -590,16 +561,12 @@ londonDate.setUTCHours(0, 0, 0, 0);
         };
       });
 
-      // Update case assignments based on optimization results
       const updatedCases = initialCases.map(caseData => {
-        // Find which agent was assigned this case and when
         let assignedRouteIndex = -1;
         let deliveryTime: string | { seconds: number } | undefined = undefined;
 
-        // Search through all routes (including inactive placeholders)
         for (let routeIdx = 0; routeIdx < fullRoutes.length; routeIdx++) {
           const visit = fullRoutes[routeIdx].visits.find(v => {
-            // Match by postcode label
             return v.shipmentLabel === caseData.postcode;
           });
 
@@ -619,7 +586,18 @@ londonDate.setUTCHours(0, 0, 0, 0);
 
       setOptimizedRoutes(fullRoutes);
       setCases(updatedCases);
-      setRoutesVersion(prev => prev + 1); 
+      setRoutesVersion(prev => prev + 1);
+      
+      // Update optimized agent settings - these are what the map will display
+      setOptimizedAgentSettings(currentAgentSettings.map(s => ({ ...s })));
+      
+      // Update original case data to reflect the priorities/slots used in this optimization
+      originalCaseData.current = new Map(
+        updatedCases.map(c => [c.id, { priority: c.priority, deliverySlot: c.deliverySlot }])
+      );
+      
+      // Update original agent settings to reflect settings used in this optimization
+      originalAgentSettings.current = currentAgentSettings.map(s => ({ ...s }));
     } catch (err) {
       console.error('❌ Error:', err);
       setError(err instanceof Error ? err.message : 'An error occurred');
@@ -631,7 +609,6 @@ londonDate.setUTCHours(0, 0, 0, 0);
   if (loadError) {
     return (
       <div className="flex items-center justify-center h-screen bg-gray-100">
-        {/* Error Content */}
         <div className="text-center p-8 bg-white rounded-lg shadow-lg">
           <h2 className="text-xl font-bold text-red-600 mb-4">❌ Map Loading Error:</h2>
           <p className="text-gray-700">Failed to load Google Maps. Please check your API key.</p>
@@ -644,9 +621,7 @@ londonDate.setUTCHours(0, 0, 0, 0);
     <div className="flex flex-col h-screen bg-gray-50">
       <Header />
 
-      {/* Two Column Layout - fills remaining space */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Left Column - Map */}
         <div className="flex-1 relative">
           {!googleMapsApiKey && (
             <div className="absolute inset-0 flex items-center justify-center bg-gray-100 z-10">
@@ -659,7 +634,6 @@ londonDate.setUTCHours(0, 0, 0, 0);
             </div>
           )}
 
-          {/* Scenario Selection - Only show when no routes optimized */}
           {optimizedRoutes.length === 0 && !loading && (
             <div className="absolute inset-0 flex items-center justify-center bg-gray-50 z-10">
               <div className="max-w-4xl w-full px-8">
@@ -668,7 +642,6 @@ londonDate.setUTCHours(0, 0, 0, 0);
                 </h1>
 
                 <div className="grid md:grid-cols-2 gap-6">
-                  {/* Full Scenario Card */}
                   <div className="bg-white rounded-lg shadow-lg p-6 border-2 border-blue-200 hover:border-blue-400 transition-colors">
                     <h2 className="text-2xl font-bold text-blue-600 mb-4">📊 Full Scenario</h2>
                     <ul className="space-y-2 mb-6 text-gray-700">
@@ -678,6 +651,7 @@ londonDate.setUTCHours(0, 0, 0, 0);
                       <li>✓ 45-minute lunch break</li>
                       <li>✓ Priority-based optimization</li>
                       <li>✓ ~1 in 12 cases with delivery slots</li>
+                      <li>✓ Agent 1 finishes at SW1A 1AA</li>
                     </ul>
                     <button
                       onClick={() => handleScenarioSelect('full')}
@@ -687,16 +661,16 @@ londonDate.setUTCHours(0, 0, 0, 0);
                     </button>
                   </div>
 
-                  {/* Reduced Scenario Card */}
                   <div className="bg-white rounded-lg shadow-lg p-6 border-2 border-green-200 hover:border-green-400 transition-colors">
                     <h2 className="text-2xl font-bold text-green-600 mb-4">📉 Reduced Scenario</h2>
                     <ul className="space-y-2 mb-6 text-gray-700">
-                      <li>✓ 15 cases across London</li>
-                      <li>✓ 2 agents (W6 9LI, W2 3EL)</li>
-                      <li>✓ Default hours: 11:30-14:00</li>
+                      <li>✓ 8 cases across London</li>
+                      <li>✓ 2 agents (W6 9LI, SE14 5NP)</li>
+                      <li>✓ Default hours: 10:30-14:00</li>
                       <li>✓ 45-minute lunch break</li>
                       <li>✓ Priority-based optimization</li>
                       <li>✓ ~1 in 12 cases with delivery slots</li>
+                      <li>✓ Agent 1 finishes at EC1A 1BB</li>
                     </ul>
                     <button
                       onClick={() => handleScenarioSelect('reduced')}
@@ -714,7 +688,6 @@ londonDate.setUTCHours(0, 0, 0, 0);
             </div>
           )}
 
-          {/* Loading State */}
           {loading && optimizedRoutes.length === 0 && (
             <div className="absolute inset-0 flex items-center justify-center bg-gray-50 z-10">
               <div className="text-center">
@@ -723,7 +696,7 @@ londonDate.setUTCHours(0, 0, 0, 0);
                 <p className="text-gray-600">
                   {selectedScenario === 'full'
                     ? 'Processing 200 cases across 6 agents'
-                    : 'Processing 40 cases across 2 agents'}
+                    : 'Processing 8 cases across 2 agents'}
                 </p>
               </div>
             </div>
@@ -738,20 +711,20 @@ londonDate.setUTCHours(0, 0, 0, 0);
             </div>
           )}
 
-          {/* Map Section - Fill entire container */}
           {optimizedRoutes.length > 0 && googleMapsApiKey && isLoaded && (
             <div className="relative w-full h-full">
-<RouteMap
-  routes={optimizedRoutes}
-  agentLocations={agentLocations}
-  cases={cases}
-  unallocatedCases={unallocatedCases}
-  routesVersion={routesVersion}
-/>
+              <RouteMap
+                routes={optimizedRoutes}
+                agentLocations={agentLocations}
+                cases={cases}
+                unallocatedCases={unallocatedCases}
+                routesVersion={routesVersion}
+                agentSettings={optimizedAgentSettings}
+                originalCasePriorities={originalCaseData.current}
+              />
             </div>
           )}
 
-          {/* Map Loading State */}
           {optimizedRoutes.length > 0 && googleMapsApiKey && !isLoaded && (
             <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
               <div className="text-lg text-gray-700">Loading map...</div>
@@ -759,7 +732,6 @@ londonDate.setUTCHours(0, 0, 0, 0);
           )}
         </div>
 
-        {/* Right Column - Tabbed Interface */}
         {optimizedRoutes.length > 0 && (
           <div className="w-[400px] border-l border-gray-200 bg-white">
             <RouteDetails
@@ -809,16 +781,15 @@ interface RouteDetailsProps {
   onUnallocatedCasesUpdate?: (cases: Array<CaseData & { unallocatedNumber: number }>) => void;
 }
 
-// Colors for different agent routes (same as RouteMap)
 const ROUTE_COLORS = [
-  '#4285f4', // Blue
-  '#ea4335', // Red
-  '#fbbc04', // Yellow
-  '#34a853', // Green
-  '#ff6d00', // Orange
-  '#9c27b0', // Purple
-  '#00bcd4', // Cyan
-  '#e91e63', // Pink
+  '#4285f4',
+  '#ea4335',
+  '#fbbc04',
+  '#34a853',
+  '#ff6d00',
+  '#9c27b0',
+  '#00bcd4',
+  '#e91e63',
 ];
 
 type ViewMode = 'agents' | 'cases';
@@ -845,9 +816,8 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
   const [agentFilter, setAgentFilter] = useState<AgentFilter>('all');
   const [changesExpanded, setChangesExpanded] = useState(false);
 
-  // Helper function to get time in seconds for sorting
   const getTimeInSeconds = (time: string | { seconds: number } | undefined): number => {
-    if (!time) return Infinity; // Unallocated cases go to end
+    if (!time) return Infinity;
     if (typeof time === 'object' && 'seconds' in time) {
       return time.seconds;
     }
@@ -858,22 +828,16 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
     return Infinity;
   };
 
-  // Get the "optimized" agent status (status at last optimization)
-  // This is the status before any pending changes
   const getOptimizedAgentStatus = (agentIndex: number): boolean => {
     const agentChange = agentChanges.find(change => change.agentIndex === agentIndex);
     if (agentChange) {
-      // If there's a pending change, return the OLD status (before the change)
       return agentChange.oldSettings.active;
     }
-    // No pending change, so current status is the optimized status
     return agentSettings[agentIndex].active;
   };
 
-  // Create numbered unallocated cases
   const unallocatedCasesWithNumbers = useMemo(() => {
     const unallocated = cases.filter(c => c.assignedAgentIndex === null);
-    // Sort by case ID to maintain consistent ordering
     unallocated.sort((a, b) => a.id.localeCompare(b.id));
     
     const numbered = unallocated.map((caseData, index) => ({
@@ -889,7 +853,6 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
     return numbered;
   }, [cases]);
 
-  // Update parent component with unallocated cases
   useEffect(() => {
     if (onUnallocatedCasesUpdate) {
       console.log('📤 RouteDetails - Sending unallocated cases to parent:', unallocatedCasesWithNumbers.length);
@@ -897,7 +860,6 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
     }
   }, [unallocatedCasesWithNumbers, onUnallocatedCasesUpdate]);
 
-  // Create a map for quick lookup of unallocated numbers
   const unallocatedNumberMap = useMemo(() => {
     const map = new Map<string, number>();
     unallocatedCasesWithNumbers.forEach(c => {
@@ -906,7 +868,6 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
     return map;
   }, [unallocatedCasesWithNumbers]);
 
-  // Filter and sort agents based on optimized status
   const filteredAgents = useMemo(() => {
     const agentsWithIndex = routes.map((route, index) => ({
       route,
@@ -914,7 +875,6 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
       optimizedActive: getOptimizedAgentStatus(index),
     }));
 
-    // Filter based on selection
     let filtered = agentsWithIndex;
     if (agentFilter === 'active') {
       filtered = agentsWithIndex.filter(a => a.optimizedActive);
@@ -925,7 +885,6 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
     return filtered;
   }, [routes, agentSettings, agentChanges, agentFilter]);
 
-  // Calculate agent counts based on optimized status
   const agentCounts = useMemo(() => {
     const active = routes.filter((_, index) => getOptimizedAgentStatus(index)).length;
     const inactive = routes.length - active;
@@ -936,9 +895,7 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
     };
   }, [routes, agentSettings, agentChanges]);
 
-  // Sort and filter cases
   const filteredAndSortedCases = useMemo(() => {
-    // First filter
     let filtered = cases;
     if (caseFilter === 'allocated') {
       filtered = cases.filter(c => c.assignedAgentIndex !== null);
@@ -946,16 +903,13 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
       filtered = cases.filter(c => c.assignedAgentIndex === null);
     }
 
-    // Then sort
     return filtered.sort((a, b) => {
-      // First sort by allocated vs unallocated
       const aAllocated = a.assignedAgentIndex !== null;
       const bAllocated = b.assignedAgentIndex !== null;
 
-      if (aAllocated && !bAllocated) return -1; // Allocated first
+      if (aAllocated && !bAllocated) return -1;
       if (!aAllocated && bAllocated) return 1;
 
-      // Both allocated - sort by agent index and delivery time
       if (aAllocated && bAllocated) {
         const agentA = a.assignedAgentIndex!;
         const agentB = b.assignedAgentIndex!;
@@ -963,20 +917,17 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
           return agentA - agentB;
         }
 
-        // Same agent - sort by delivery time
         const timeA = getTimeInSeconds(a.deliveryTime);
         const timeB = getTimeInSeconds(b.deliveryTime);
         return timeA - timeB;
       }
 
-      // Both unallocated - sort by unallocated number
       const numA = unallocatedNumberMap.get(a.id) ?? Infinity;
       const numB = unallocatedNumberMap.get(b.id) ?? Infinity;
       return numA - numB;
     });
   }, [cases, caseFilter, unallocatedNumberMap]);
 
-  // Calculate case counts for filter options
   const caseCounts = useMemo(() => {
     const allocated = cases.filter(c => c.assignedAgentIndex !== null).length;
     const unallocated = cases.filter(c => c.assignedAgentIndex === null).length;
@@ -987,7 +938,6 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
     };
   }, [cases]);
 
-  // Handlers that also collapse the changes panel
   const handleViewModeChange = (mode: ViewMode) => {
     setViewMode(mode);
     setChangesExpanded(false);
@@ -1003,11 +953,9 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
     setChangesExpanded(false);
   };
 
-  // Calculate total changes
   const totalChanges = caseChanges.length + agentChanges.length;
   const shouldShowChangesPanel = totalChanges > 0 || isRecalculating;
 
-  // Auto-collapse changes panel when all changes are deleted
   useEffect(() => {
     if (!shouldShowChangesPanel && changesExpanded) {
       setChangesExpanded(false);
@@ -1018,9 +966,7 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
 
   return (
     <div className="flex flex-col h-full">
-      {/* Fixed Tab Bar */}
       <div className="shrink-0 p-4 border-b border-gray-200 bg-white">
-        {/* Tabs */}
         <div className="flex gap-2 mb-4">
           <button
             onClick={() => handleViewModeChange('agents')}
@@ -1036,9 +982,7 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
               viewBox="0 0 24 24" 
               fill="currentColor"
             >
-              {/* Head - larger and positioned higher */}
               <circle cx="12" cy="7" r="5.5" />
-              {/* Body - wider and extends to bottom */}
               <path d="M2 22 Q 2 15, 6 12.5 L 18 12.5 Q 22 15, 22 22 Z" />
             </svg>
             <span>Agents</span>
@@ -1068,7 +1012,6 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
           </button>
         </div>
 
-        {/* Filter Dropdown - Show based on view mode */}
         {viewMode === 'agents' && (
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">
@@ -1104,11 +1047,9 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
         )}
       </div>
 
-      {/* Scrollable Content Area - Hidden when changes expanded */}
       {!changesExpanded && (
         <div className="flex-1 min-h-0 overflow-y-auto p-4">
           {viewMode === 'agents' ? (
-            // Agents View
             <div className="space-y-4">
               {filteredAgents.length === 0 ? (
                 <div className="text-center py-8 text-gray-500">
@@ -1131,7 +1072,6 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
               )}
             </div>
           ) : (
-            // Cases View
             <div className="space-y-4">
               {filteredAndSortedCases.length === 0 ? (
                 <div className="text-center py-8 text-gray-500">
@@ -1139,9 +1079,8 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
                 </div>
               ) : (
                 filteredAndSortedCases.map((caseData) => {
-                  // Find which agent this case is assigned to
                   let agentLabel: string | null = null;
-                  let agentColor = '#9ca3af'; // Grey for unallocated
+                  let agentColor = '#9ca3af';
                   let routeNumber: number | null = null;
                   let unallocatedNumber: number | null = null;
 
@@ -1151,18 +1090,15 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
                       agentLabel = route.vehicleLabel.replace('Vehicle', 'Agent');
                       agentColor = ROUTE_COLORS[caseData.assignedAgentIndex % ROUTE_COLORS.length];
 
-                      // Find the visit index (position in route) for this case
                       const visitIndex = route.visits.findIndex(visit => {
-                        // Match by shipment index which corresponds to case
                         return visit.shipmentLabel === caseData.postcode;
                       });
 
                       if (visitIndex >= 0) {
-                        routeNumber = visitIndex + 1; // 1-indexed for display
+                        routeNumber = visitIndex + 1;
                       }
                     }
                   } else {
-                    // Unallocated case - get its number
                     unallocatedNumber = unallocatedNumberMap.get(caseData.id) ?? null;
                   }
 
@@ -1185,7 +1121,6 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
         </div>
       )}
 
-      {/* Changes Panel - Only render container if there are changes or recalculating */}
       {shouldShowChangesPanel && (
         <div className={changesExpanded ? "flex-1 min-h-0 bg-white" : "bg-white shrink-0"}>
           <ChangesPanel
@@ -1207,7 +1142,7 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
 // components/RouteMap.tsx
 import React, { useState, useEffect, useRef } from 'react';
 import { GoogleMap, Marker, Polyline, InfoWindow, OverlayView } from '@react-google-maps/api';
-import type { Location, OptimizedRoute, CaseData } from '../types/route';
+import type { Location, OptimizedRoute, CaseData, AgentSettings, CasePriority, TimeSlot } from '../types/route';
 import { formatTime } from '../utils/formatters';
 
 interface RouteMapProps {
@@ -1216,6 +1151,8 @@ interface RouteMapProps {
   cases: CaseData[];
   unallocatedCases?: Array<CaseData & { unallocatedNumber: number }>;
   routesVersion?: number;
+  agentSettings: AgentSettings[];
+  originalCasePriorities: Map<string, { priority: CasePriority; deliverySlot?: TimeSlot }>;
 }
 
 const mapContainerStyle = {
@@ -1224,7 +1161,7 @@ const mapContainerStyle = {
 };
 
 const defaultCenter = {
-  lat: 51.5074, // London
+  lat: 51.5074,
   lng: -0.1278,
 };
 
@@ -1280,19 +1217,17 @@ const mapStyles: google.maps.MapTypeStyle[] = [
   }
 ];
 
-// Colors for different agent routes
 const ROUTE_COLORS = [
-  '#4285f4', // Blue
-  '#ea4335', // Red
-  '#fbbc04', // Yellow
-  '#34a853', // Green
-  '#ff6d00', // Orange
-  '#9c27b0', // Purple
-  '#00bcd4', // Cyan
-  '#e91e63', // Pink
+  '#4285f4',
+  '#ea4335',
+  '#fbbc04',
+  '#34a853',
+  '#ff6d00',
+  '#9c27b0',
+  '#00bcd4',
+  '#e91e63',
 ];
 
-// Create a custom marker icon with a person silhouette
 const createAgentMarkerIcon = (color: string): google.maps.Icon => {
   const svg = `
     <svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
@@ -1311,12 +1246,49 @@ const createAgentMarkerIcon = (color: string): google.maps.Icon => {
   };
 };
 
+const createFinishMarkerIcon = (color: string): google.maps.Icon => {
+  const svg = `
+    <svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="20" cy="20" r="18" fill="${color}" stroke="white" stroke-width="2"/>
+      <g transform="translate(21.5, 20) scale(0.75)">
+        <rect x="-10" y="-8" width="1.5" height="18" fill="white"/>
+        <g transform="translate(-9, -8)">
+          <rect x="0" y="0" width="4" height="3" fill="white"/>
+          <rect x="4" y="0" width="4" height="3" fill="#333"/>
+          <rect x="8" y="0" width="4" height="3" fill="white"/>
+          <rect x="12" y="0" width="4" height="3" fill="#333"/>
+          <rect x="0" y="3" width="4" height="3" fill="#333"/>
+          <rect x="4" y="3" width="4" height="3" fill="white"/>
+          <rect x="8" y="3" width="4" height="3" fill="#333"/>
+          <rect x="12" y="3" width="4" height="3" fill="white"/>
+          <rect x="0" y="6" width="4" height="3" fill="white"/>
+          <rect x="4" y="6" width="4" height="3" fill="#333"/>
+          <rect x="8" y="6" width="4" height="3" fill="white"/>
+          <rect x="12" y="6" width="4" height="3" fill="#333"/>
+          <rect x="0" y="9" width="4" height="3" fill="#333"/>
+          <rect x="4" y="9" width="4" height="3" fill="white"/>
+          <rect x="8" y="9" width="4" height="3" fill="#333"/>
+          <rect x="12" y="9" width="4" height="3" fill="white"/>
+        </g>
+      </g>
+    </svg>
+  `;
+  
+  return {
+    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+    scaledSize: new google.maps.Size(40, 40),
+    anchor: new google.maps.Point(20, 20),
+  };
+};
+
 export const RouteMap: React.FC<RouteMapProps> = ({ 
   routes, 
   agentLocations,
   cases,
   unallocatedCases = [],
-  routesVersion = 0
+  routesVersion = 0,
+  agentSettings,
+  originalCasePriorities,
 }) => {
   const [selectedMarker, setSelectedMarker] = useState<{
     type: 'allocated' | 'unallocated';
@@ -1327,60 +1299,64 @@ export const RouteMap: React.FC<RouteMapProps> = ({
 
   const mapRef = useRef<google.maps.Map | null>(null);
 
-  // Fit bounds to show all markers
-useEffect(() => {
-  // Add a small delay to ensure map is fully loaded after remount
-  const timer = setTimeout(() => {
-    if (!mapRef.current) return;
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (!mapRef.current) return;
 
-    const bounds = new google.maps.LatLngBounds();
-    let hasPoints = false;
+      const bounds = new google.maps.LatLngBounds();
+      let hasPoints = false;
 
-    // Add agent locations
-    agentLocations.forEach(location => {
-      bounds.extend({ lat: location.latitude, lng: location.longitude });
-      hasPoints = true;
-    });
+      agentLocations.forEach(location => {
+        bounds.extend({ lat: location.latitude, lng: location.longitude });
+        hasPoints = true;
+      });
 
-    // Add all route visit locations
-    routes.forEach(route => {
-      route.visits.forEach(visit => {
-        if (visit.arrivalLocation) {
+      agentSettings.forEach(settings => {
+        if (settings.finishLocation) {
           bounds.extend({ 
-            lat: visit.arrivalLocation.latitude, 
-            lng: visit.arrivalLocation.longitude 
+            lat: settings.finishLocation.latitude, 
+            lng: settings.finishLocation.longitude 
           });
           hasPoints = true;
         }
       });
-    });
 
-    // Add all unallocated case locations
-    unallocatedCases.forEach(caseData => {
-      if (caseData.location) {
-        bounds.extend({ 
-          lat: caseData.location.latitude, 
-          lng: caseData.location.longitude 
+      routes.forEach(route => {
+        route.visits.forEach(visit => {
+          if (visit.arrivalLocation) {
+            bounds.extend({ 
+              lat: visit.arrivalLocation.latitude, 
+              lng: visit.arrivalLocation.longitude 
+            });
+            hasPoints = true;
+          }
         });
-        hasPoints = true;
-      }
-    });
-
-    // Fit the map to the bounds
-    if (hasPoints) {
-      mapRef.current.fitBounds(bounds, {
-        top: 50,
-        bottom: 50,
-        left: 50,
-        right: 50,
       });
-    }
-  }, 100); // 100ms delay to ensure map is ready
 
-  return () => clearTimeout(timer);
-}, [routes, agentLocations, unallocatedCases, routesVersion]);
+      unallocatedCases.forEach(caseData => {
+        if (caseData.location) {
+          bounds.extend({ 
+            lat: caseData.location.latitude, 
+            lng: caseData.location.longitude 
+          });
+          hasPoints = true;
+        }
+      });
 
-  const getRoutePath = (route: OptimizedRoute, agentLocation: Location) => {
+      if (hasPoints) {
+        mapRef.current.fitBounds(bounds, {
+          top: 50,
+          bottom: 50,
+          left: 50,
+          right: 50,
+        });
+      }
+    }, 100);
+
+    return () => clearTimeout(timer);
+  }, [routes, agentLocations, unallocatedCases, routesVersion, agentSettings]);
+
+  const getRoutePath = (route: OptimizedRoute, agentLocation: Location, agentIndex: number) => {
     const path = [];
 
     if (agentLocation) {
@@ -1399,27 +1375,32 @@ useEffect(() => {
       }
     });
 
-    if (agentLocation) {
+    const finishLocation = agentSettings[agentIndex]?.finishLocation;
+    const endLocation = finishLocation || agentLocation;
+    
+    if (endLocation) {
       path.push({
-        lat: agentLocation.latitude,
-        lng: agentLocation.longitude,
+        lat: endLocation.latitude,
+        lng: endLocation.longitude,
       });
     }
 
     return path;
   };
 
-const getPolylineKey = (index: number) => {
-  return `polyline-${index}-v${routesVersion}`;
-};
-
-  // Helper to get case priority by postcode
-  const getCasePriority = (postcode: string): string => {
-    const caseData = cases.find(c => c.postcode === postcode);
-    return caseData?.priority || 'medium';
+  const getPolylineKey = (index: number) => {
+    return `polyline-${index}-v${routesVersion}`;
   };
 
-  // Process unallocated markers
+  const getCasePriority = (postcode: string): string => {
+    const caseData = cases.find(c => c.postcode === postcode);
+    if (!caseData) return 'medium';
+    
+    // Use original priority from last optimization, not current priority with pending changes
+    const originalData = originalCasePriorities.get(caseData.id);
+    return originalData?.priority || caseData.priority;
+  };
+
   const unallocatedMarkers = unallocatedCases
     .filter(caseData => !!caseData.location)
     .map((caseData) => {
@@ -1427,7 +1408,10 @@ const getPolylineKey = (index: number) => {
         selectedMarker?.type === 'unallocated' &&
         selectedMarker?.caseId === caseData.id;
 
-      const isHighPriority = caseData.priority === 'high';
+      // Use original priority from last optimization
+      const originalData = originalCasePriorities.get(caseData.id);
+      const displayPriority = originalData?.priority || caseData.priority;
+      const isHighPriority = displayPriority === 'high';
 
       return (
         <React.Fragment key={`unallocated-${caseData.id}`}>
@@ -1453,7 +1437,6 @@ const getPolylineKey = (index: number) => {
             onClick={() => setSelectedMarker({ type: 'unallocated', caseId: caseData.id })}
             zIndex={isHighPriority ? 1000 : 100}
           />
-          {/* High priority badge overlay */}
           {isHighPriority && (
             <OverlayView
               position={{
@@ -1505,7 +1488,7 @@ const getPolylineKey = (index: number) => {
                 <div>
                   Case {caseData.unallocatedNumber}: {caseData.postcode}
                 </div>
-                <div>Priority: {caseData.priority.toUpperCase()}</div>
+                <div>Priority: {displayPriority.toUpperCase()}</div>
               </div>
             </InfoWindow>
           )}
@@ -1514,16 +1497,16 @@ const getPolylineKey = (index: number) => {
     });
 
   return (
-<GoogleMap
-  key={`map-v${routesVersion}`} 
-  mapContainerStyle={mapContainerStyle}
+    <GoogleMap
+      key={`map-v${routesVersion}`}
+      mapContainerStyle={mapContainerStyle}
       center={defaultCenter}
       zoom={11}
       onLoad={(map) => {
         mapRef.current = map;
       }}
       options={{
-        styles: mapStyles, // Apply custom styles
+        styles: mapStyles,
         zoomControl: true,
         streetViewControl: false,
         mapTypeControl: false,
@@ -1531,12 +1514,11 @@ const getPolylineKey = (index: number) => {
         disableDefaultUI: false,
       }}
     >
-      {/* Agent Start Markers */}
       {agentLocations.map((location, index) => {
         const color = ROUTE_COLORS[index % ROUTE_COLORS.length];
         return (
           <Marker
-            key={`agent-${index}`}
+            key={`agent-start-${index}`}
             position={{
               lat: location.latitude,
               lng: location.longitude,
@@ -1548,7 +1530,24 @@ const getPolylineKey = (index: number) => {
         );
       })}
 
-      {/* Case Location Markers for all routes */}
+      {agentSettings.map((settings, index) => {
+        if (!settings.finishLocation) return null;
+        
+        const color = ROUTE_COLORS[index % ROUTE_COLORS.length];
+        return (
+          <Marker
+            key={`agent-finish-${index}`}
+            position={{
+              lat: settings.finishLocation.latitude,
+              lng: settings.finishLocation.longitude,
+            }}
+            icon={createFinishMarkerIcon(color)}
+            title={`Agent ${index + 1} Finish`}
+            zIndex={50}
+          />
+        );
+      })}
+
       {routes.map((route, routeIndex) =>
         route.visits.map((visit, visitIndex) => {
           if (!visit.arrivalLocation) return null;
@@ -1585,7 +1584,6 @@ const getPolylineKey = (index: number) => {
                 onClick={() => setSelectedMarker({ type: 'allocated', routeIndex, visitIndex })}
                 zIndex={isHighPriority ? 1000 : 100}
               />
-              {/* High priority badge overlay */}
               {isHighPriority && (
                 <OverlayView
                   position={{
@@ -1648,26 +1646,24 @@ const getPolylineKey = (index: number) => {
         })
       )}
 
-      {/* Unallocated Case Markers */}
       {unallocatedMarkers}
 
-      {/* Route Polylines for all agents */}
       {routes.map((route, index) => {
         if (!agentLocations[index] || route.visits.length === 0) return null;
 
-        const path = getRoutePath(route, agentLocations[index]);
+        const path = getRoutePath(route, agentLocations[index], index);
         if (path.length < 2) return null;
 
         return (
-<Polyline
-  key={getPolylineKey(index)}  // Changed from getPolylineKey(route, index)
-  path={path}
-  options={{
-    strokeColor: ROUTE_COLORS[index % ROUTE_COLORS.length],
-    strokeWeight: 3,
-    strokeOpacity: 0.7,
-  }}
-/>
+          <Polyline
+            key={getPolylineKey(index)}
+            path={path}
+            options={{
+              strokeColor: ROUTE_COLORS[index % ROUTE_COLORS.length],
+              strokeWeight: 3,
+              strokeOpacity: 0.7,
+            }}
+          />
         );
       })}
     </GoogleMap>
@@ -1676,10 +1672,11 @@ const getPolylineKey = (index: number) => {
 
 // components/AgentCard.tsx
 import React, { useState, useEffect } from 'react';
-import type { OptimizedRoute, AgentSettings, CaseData, CasePriority, TimeSlot } from '../types/route';
+import type { OptimizedRoute, AgentSettings, CaseData, CasePriority, TimeSlot, Location } from '../types/route';
 import { generateTimeOptions, generateLunchOptions } from '../utils/timeSlotGenerator';
 import { formatTimeWithoutSeconds } from '../utils/formatters';
 import { TimeSlotInput } from './TimeSlotInput';
+import { geocodePostcode } from '../utils/geocoding';
 
 interface AgentCardProps {
   route: OptimizedRoute;
@@ -1740,6 +1737,9 @@ export const AgentCard: React.FC<AgentCardProps> = ({
 }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [expandedCaseId, setExpandedCaseId] = useState<string | null>(null);
+  const [showFinishInput, setShowFinishInput] = useState(false);
+  const [finishPostcodeInput, setFinishPostcodeInput] = useState('');
+  const [isGeocodingFinish, setIsGeocodingFinish] = useState(false);
 
   // Extract agent name from vehicleLabel (e.g., "Agent 1 (SW1 4GO)")
   const agentLabel = route.vehicleLabel.replace('Vehicle', 'Agent');
@@ -1802,6 +1802,49 @@ export const AgentCard: React.FC<AgentCardProps> = ({
     setExpandedCaseId(expandedCaseId === caseId ? null : caseId);
   };
 
+  const handleAddFinishClick = () => {
+    setShowFinishInput(true);
+    setFinishPostcodeInput('');
+  };
+
+  const handleAddFinish = async () => {
+    if (!finishPostcodeInput.trim()) return;
+
+    setIsGeocodingFinish(true);
+    try {
+      const location = await geocodePostcode(finishPostcodeInput.trim());
+      if (location) {
+        onSettingsChange(index, {
+          ...settings,
+          finishPostcode: finishPostcodeInput.trim(),
+          finishLocation: location,
+        });
+        setShowFinishInput(false);
+        setFinishPostcodeInput('');
+      } else {
+        alert('Could not geocode postcode. Please check and try again.');
+      }
+    } catch (error) {
+      console.error('Error geocoding finish location:', error);
+      alert('Error geocoding postcode. Please try again.');
+    } finally {
+      setIsGeocodingFinish(false);
+    }
+  };
+
+  const handleRemoveFinish = () => {
+    onSettingsChange(index, {
+      ...settings,
+      finishPostcode: undefined,
+      finishLocation: undefined,
+    });
+  };
+
+  const handleCancelFinishInput = () => {
+    setShowFinishInput(false);
+    setFinishPostcodeInput('');
+  };
+
   return (
     <div className="p-4 bg-white border border-gray-300 rounded-lg shadow-sm">
       {/* Agent Icon and Name */}
@@ -1835,7 +1878,7 @@ export const AgentCard: React.FC<AgentCardProps> = ({
         </div>
       </div>
 
-      {/* Postcode - Only show when active */}
+      {/* Start Postcode - Only show when active */}
       {settings.active && (
         <div className="flex items-center gap-2 mb-3">
           <svg 
@@ -1853,6 +1896,99 @@ export const AgentCard: React.FC<AgentCardProps> = ({
             <circle cx="12" cy="10" r="3"></circle>
           </svg>
           <span className="text-sm text-gray-700">{agentPostcode}</span>
+        </div>
+      )}
+
+      {/* Finish Location - Only show when active */}
+      {settings.active && (
+        <div className="flex items-center justify-between mb-3">
+          {/* LHS - Chequered flag icon (if finish location exists) */}
+          <div className="flex items-center gap-2">
+            {settings.finishPostcode && (
+              <>
+                <svg 
+                  width="14" 
+                  height="14" 
+                  viewBox="0 0 24 24" 
+                  fill="none" 
+                  stroke="currentColor" 
+                  strokeWidth="2" 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round"
+                  className="text-gray-600"
+                >
+                  <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path>
+                  <line x1="4" y1="22" x2="4" y2="15"></line>
+                </svg>
+                <span className="text-sm text-gray-700">{settings.finishPostcode}</span>
+              </>
+            )}
+          </div>
+
+          {/* RHS - Add/Remove button or input */}
+          <div className="ml-auto">
+            {!settings.finishPostcode && !showFinishInput && (
+              <button
+                onClick={handleAddFinishClick}
+                className="text-xs text-blue-600 hover:text-blue-700 font-medium cursor-pointer"
+              >
+                + Add Finish
+              </button>
+            )}
+
+            {showFinishInput && (
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={finishPostcodeInput}
+                  onChange={(e) => setFinishPostcodeInput(e.target.value)}
+                  placeholder="Enter postcode"
+                  className="text-xs border border-gray-300 rounded px-2 py-1 w-32"
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') handleAddFinish();
+                  }}
+                  disabled={isGeocodingFinish}
+                />
+                <button
+                  onClick={handleAddFinish}
+                  disabled={isGeocodingFinish || !finishPostcodeInput.trim()}
+                  className="text-xs px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                >
+                  {isGeocodingFinish ? '...' : 'Add'}
+                </button>
+                <button
+                  onClick={handleCancelFinishInput}
+                  disabled={isGeocodingFinish}
+                  className="text-xs px-2 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+
+            {settings.finishPostcode && !showFinishInput && (
+              <button
+                onClick={handleRemoveFinish}
+                className="flex items-center gap-1 text-[10px] text-gray-500 hover:text-gray-700 cursor-pointer"
+              >
+                <span>Remove</span>
+                <svg 
+                  width="12" 
+                  height="12" 
+                  viewBox="0 0 24 24" 
+                  fill="none" 
+                  stroke="currentColor" 
+                  strokeWidth="2" 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round"
+                >
+                  <path d="M3 6h18"></path>
+                  <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                  <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+                </svg>
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -2028,26 +2164,26 @@ export const AgentCard: React.FC<AgentCardProps> = ({
                         </div>
 
                         {/* RHS: Chevron or Close Button */}
-{isThisCaseExpanded ? (
-  <button
-    onClick={(e) => {
-      e.stopPropagation();
-      setExpandedCaseId(null);
-    }}
-    className="flex-shrink-0 flex items-center gap-1 text-gray-500 hover:text-gray-700 px-1 text-[10px] cursor-pointer"
-  >
-    <span>Close</span>
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-      <path d="M4 10L8 6L12 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  </button>
-) : (
-  <div className="flex-shrink-0 text-gray-400">
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-      <path d="M4 6L8 10L12 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  </div>
-)}
+                        {isThisCaseExpanded ? (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setExpandedCaseId(null);
+                            }}
+                            className="flex-shrink-0 flex items-center gap-1 text-gray-500 hover:text-gray-700 px-1 text-[10px] cursor-pointer"
+                          >
+                            <span>Close</span>
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                              <path d="M4 10L8 6L12 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                          </button>
+                        ) : (
+                          <div className="flex-shrink-0 text-gray-400">
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                              <path d="M4 6L8 10L12 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                          </div>
+                        )}
                       </div>
 
                       {/* Expanded Content - Priority and Time Slot (no top border) */}
@@ -3036,7 +3172,6 @@ export const TimeSlotInput: React.FC<TimeSlotInputProps> = ({
 };
 
 // components/ChangesPanel.tsx
-
 import React, { useEffect } from 'react';
 import type { CaseChange, PriorityChange, TimeSlotChange, AgentChange } from '../types/route';
 
@@ -3051,19 +3186,17 @@ interface ChangesPanelProps {
   onToggleExpanded: (expanded: boolean) => void;
 }
 
-// Colors for different agents (same as RouteMap and RouteDetails)
 const ROUTE_COLORS = [
-  '#4285f4', // Blue
-  '#ea4335', // Red
-  '#fbbc04', // Yellow
-  '#34a853', // Green
-  '#ff6d00', // Orange
-  '#9c27b0', // Purple
-  '#00bcd4', // Cyan
-  '#e91e63', // Pink
+  '#4285f4',
+  '#ea4335',
+  '#fbbc04',
+  '#34a853',
+  '#ff6d00',
+  '#9c27b0',
+  '#00bcd4',
+  '#e91e63',
 ];
 
-// Create agent icon SVG as data URL
 const createAgentIcon = (color: string): string => {
   const svg = `
     <svg width="28" height="28" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
@@ -3095,19 +3228,16 @@ export const ChangesPanel: React.FC<ChangesPanelProps> = ({
 }) => {
   const totalChanges = caseChanges.length + agentChanges.length;
 
-  // Auto-collapse when recalculation starts
   useEffect(() => {
     if (isRecalculating) {
       onToggleExpanded(false);
     }
   }, [isRecalculating, onToggleExpanded]);
 
-  // Show panel if there are changes OR if recalculating
   if (totalChanges === 0 && !isRecalculating) return null;
 
   return (
     <div className={`border border-x-0 border-b-0 ${isExpanded ? 'border-t-0' : ''} border-gray-300 bg-white shrink-0 rounded-t-xl flex flex-col ${isExpanded ? 'h-full' : ''}`}>
-      {/* Changes Summary Row */}
       <div className="px-3 py-3 flex justify-between items-center border-b border-gray-200 shrink-0">
         <span className="text-sm font-medium text-gray-700">
           {isRecalculating && totalChanges === 0 
@@ -3132,17 +3262,15 @@ export const ChangesPanel: React.FC<ChangesPanelProps> = ({
         )}
       </div>
 
-      {/* Expandable Changes List - Scrollable */}
       {isExpanded && totalChanges > 0 && (
         <div 
           className="flex-1 overflow-y-auto border-b border-gray-200 min-h-0"
-          style={{ marginTop: '2px' }} // 2px gap from the summary row
+          style={{ marginTop: '2px' }}
         >
           <div className="p-3">
-            {/* Agent Changes */}
             {agentChanges.map((change, index) => {
               const agentColor = ROUTE_COLORS[change.agentIndex % ROUTE_COLORS.length];
-              const agentName = change.agentLabel.split(' (')[0]; // Remove postcode part
+              const agentName = change.agentLabel.split(' (')[0];
               
               return (
                 <div 
@@ -3150,7 +3278,6 @@ export const ChangesPanel: React.FC<ChangesPanelProps> = ({
                   className="mb-2 last:mb-0 p-2 bg-blue-50 rounded text-xs border border-blue-200 flex justify-between items-start gap-2"
                 >
                   <div className="flex-1">
-                    {/* Agent icon and name */}
                     <div className="flex items-center gap-2 mb-2">
                       <img 
                         src={createAgentIcon(agentColor)} 
@@ -3163,7 +3290,6 @@ export const ChangesPanel: React.FC<ChangesPanelProps> = ({
                     </div>
                     
                     <div>
-                      {/* Show active/inactive change if it changed */}
                       {change.oldSettings.active !== change.newSettings.active && (
                         <>
                           <div className="text-[10px] text-gray-500 mb-0.5">Status</div>
@@ -3179,7 +3305,6 @@ export const ChangesPanel: React.FC<ChangesPanelProps> = ({
                         </>
                       )}
 
-                      {/* Show work hours change if it changed */}
                       {(change.oldSettings.startTime !== change.newSettings.startTime || 
                         change.oldSettings.endTime !== change.newSettings.endTime) && (
                         <>
@@ -3196,17 +3321,31 @@ export const ChangesPanel: React.FC<ChangesPanelProps> = ({
                         </>
                       )}
 
-                      {/* Show lunch break change if it changed */}
                       {change.oldSettings.lunchDuration !== change.newSettings.lunchDuration && (
                         <>
                           <div className="text-[10px] text-gray-500 mb-0.5">Lunch Break</div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 mb-1">
                             <span className="font-medium text-gray-800">
                               {change.oldSettings.lunchDuration} min
                             </span>
                             <span className="text-gray-400">→</span>
                             <span className="font-medium text-gray-800">
                               {change.newSettings.lunchDuration} min
+                            </span>
+                          </div>
+                        </>
+                      )}
+
+                      {change.oldSettings.finishPostcode !== change.newSettings.finishPostcode && (
+                        <>
+                          <div className="text-[10px] text-gray-500 mb-0.5">Finish Location</div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-gray-800">
+                              {change.oldSettings.finishPostcode || 'None (returns to start)'}
+                            </span>
+                            <span className="text-gray-400">→</span>
+                            <span className="font-medium text-gray-800">
+                              {change.newSettings.finishPostcode || 'None (returns to start)'}
                             </span>
                           </div>
                         </>
@@ -3218,7 +3357,6 @@ export const ChangesPanel: React.FC<ChangesPanelProps> = ({
                     </div>
                   </div>
                   
-                  {/* Delete Button */}
                   <button
                     onClick={() => onDeleteAgentChange(change.agentIndex)}
                     disabled={isRecalculating}
@@ -3249,9 +3387,7 @@ export const ChangesPanel: React.FC<ChangesPanelProps> = ({
               );
             })}
 
-            {/* Case Changes */}
             {caseChanges.map((change, index) => {
-              // Type guard for PriorityChange
               const isPriorityChange = 'oldPriority' in change;
               
               return (
@@ -3260,7 +3396,6 @@ export const ChangesPanel: React.FC<ChangesPanelProps> = ({
                   className="mb-2 last:mb-0 p-2 bg-gray-50 rounded text-xs border border-gray-200 flex justify-between items-start gap-2"
                 >
                   <div className="flex-1">
-                    {/* Postcode with clipboard icon */}
                     <div className="flex items-center gap-2 mb-1">
                       <svg 
                         width="14" 
@@ -3282,7 +3417,6 @@ export const ChangesPanel: React.FC<ChangesPanelProps> = ({
                     </div>
                     
                     {isPriorityChange ? (
-                      // Priority Change Display
                       <div>
                         <div className="text-[10px] text-gray-500 mb-0.5">Priority</div>
                         <div className="flex items-center gap-2">
@@ -3296,7 +3430,6 @@ export const ChangesPanel: React.FC<ChangesPanelProps> = ({
                         </div>
                       </div>
                     ) : (
-                      // Time Slot Change Display
                       <div>
                         <div className="text-[10px] text-gray-500 mb-0.5">Delivery Slot</div>
                         <div className="flex items-center gap-2">
@@ -3322,7 +3455,6 @@ export const ChangesPanel: React.FC<ChangesPanelProps> = ({
                     </div>
                   </div>
                   
-                  {/* Delete Button */}
                   <button
                     onClick={() => onDeleteCaseChange(change.caseId, isPriorityChange ? 'priority' : 'slot')}
                     disabled={isRecalculating}
@@ -3356,7 +3488,6 @@ export const ChangesPanel: React.FC<ChangesPanelProps> = ({
         </div>
       )}
 
-      {/* Recalculate Button - Always visible at bottom */}
       <div className="p-3 shrink-0">
         <button
           onClick={onRecalculate}
@@ -3387,7 +3518,7 @@ import type { CasePriority } from '../types/route';
 export const generateCasePriority = (): CasePriority => {
   const random = Math.random();
   
-  if (random < 1/7) {
+  if (random < 1/3) {
     return 'high';
   } else if (random < 2/7) {
     return 'low';
@@ -3909,6 +4040,8 @@ export interface AgentSettings {
   endTime: string;   // "HH:mm"
   lunchDuration: number; // minutes
   active: boolean; // whether agent is active or inactive
+  finishPostcode?: string; // Optional different finish location
+  finishLocation?: Location; // Geocoded finish coordinates
 }
 
 export interface AgentChange {
@@ -3930,6 +4063,7 @@ export interface ScenarioConfig {
   defaultStartTime: string;
   defaultEndTime: string;
   defaultLunchDuration: number;
+  agentFinishPostcodes?: (string | undefined)[]; // Optional finish locations for each agent
 }
 
 export type ScenarioType = 'full' | 'reduced';

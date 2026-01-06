@@ -66,6 +66,8 @@ export interface AgentSettings {
   endTime: string;   // "HH:mm"
   lunchDuration: number; // minutes
   active: boolean; // whether agent is active or inactive
+  finishPostcode?: string; // Optional different finish location
+  finishLocation?: Location; // Geocoded finish coordinates
 }
 
 export interface AgentChange {
@@ -87,6 +89,7 @@ export interface ScenarioConfig {
   defaultStartTime: string;
   defaultEndTime: string;
   defaultLunchDuration: number;
+  agentFinishPostcodes?: (string | undefined)[]; // Optional finish locations for each agent
 }
 
 export type ScenarioType = 'full' | 'reduced';

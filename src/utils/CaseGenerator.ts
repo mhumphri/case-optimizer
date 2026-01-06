@@ -9,7 +9,7 @@ import type { CasePriority } from '../types/route';
 export const generateCasePriority = (): CasePriority => {
   const random = Math.random();
   
-  if (random < 1/7) {
+  if (random < 1/3) {
     return 'high';
   } else if (random < 2/7) {
     return 'low';

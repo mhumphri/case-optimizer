@@ -1,5 +1,4 @@
 // components/ChangesPanel.tsx
-
 import React, { useEffect } from 'react';
 import type { CaseChange, PriorityChange, TimeSlotChange, AgentChange } from '../types/route';
 
@@ -14,19 +13,17 @@ interface ChangesPanelProps {
   onToggleExpanded: (expanded: boolean) => void;
 }
 
-// Colors for different agents (same as RouteMap and RouteDetails)
 const ROUTE_COLORS = [
-  '#4285f4', // Blue
-  '#ea4335', // Red
-  '#fbbc04', // Yellow
-  '#34a853', // Green
-  '#ff6d00', // Orange
-  '#9c27b0', // Purple
-  '#00bcd4', // Cyan
-  '#e91e63', // Pink
+  '#4285f4',
+  '#ea4335',
+  '#fbbc04',
+  '#34a853',
+  '#ff6d00',
+  '#9c27b0',
+  '#00bcd4',
+  '#e91e63',
 ];
 
-// Create agent icon SVG as data URL
 const createAgentIcon = (color: string): string => {
   const svg = `
     <svg width="28" height="28" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
@@ -58,19 +55,16 @@ export const ChangesPanel: React.FC<ChangesPanelProps> = ({
 }) => {
   const totalChanges = caseChanges.length + agentChanges.length;
 
-  // Auto-collapse when recalculation starts
   useEffect(() => {
     if (isRecalculating) {
       onToggleExpanded(false);
     }
   }, [isRecalculating, onToggleExpanded]);
 
-  // Show panel if there are changes OR if recalculating
   if (totalChanges === 0 && !isRecalculating) return null;
 
   return (
     <div className={`border border-x-0 border-b-0 ${isExpanded ? 'border-t-0' : ''} border-gray-300 bg-white shrink-0 rounded-t-xl flex flex-col ${isExpanded ? 'h-full' : ''}`}>
-      {/* Changes Summary Row */}
       <div className="px-3 py-3 flex justify-between items-center border-b border-gray-200 shrink-0">
         <span className="text-sm font-medium text-gray-700">
           {isRecalculating && totalChanges === 0 
@@ -95,17 +89,15 @@ export const ChangesPanel: React.FC<ChangesPanelProps> = ({
         )}
       </div>
 
-      {/* Expandable Changes List - Scrollable */}
       {isExpanded && totalChanges > 0 && (
         <div 
           className="flex-1 overflow-y-auto border-b border-gray-200 min-h-0"
-          style={{ marginTop: '2px' }} // 2px gap from the summary row
+          style={{ marginTop: '2px' }}
         >
           <div className="p-3">
-            {/* Agent Changes */}
             {agentChanges.map((change, index) => {
               const agentColor = ROUTE_COLORS[change.agentIndex % ROUTE_COLORS.length];
-              const agentName = change.agentLabel.split(' (')[0]; // Remove postcode part
+              const agentName = change.agentLabel.split(' (')[0];
               
               return (
                 <div 
@@ -113,7 +105,6 @@ export const ChangesPanel: React.FC<ChangesPanelProps> = ({
                   className="mb-2 last:mb-0 p-2 bg-blue-50 rounded text-xs border border-blue-200 flex justify-between items-start gap-2"
                 >
                   <div className="flex-1">
-                    {/* Agent icon and name */}
                     <div className="flex items-center gap-2 mb-2">
                       <img 
                         src={createAgentIcon(agentColor)} 
@@ -126,7 +117,6 @@ export const ChangesPanel: React.FC<ChangesPanelProps> = ({
                     </div>
                     
                     <div>
-                      {/* Show active/inactive change if it changed */}
                       {change.oldSettings.active !== change.newSettings.active && (
                         <>
                           <div className="text-[10px] text-gray-500 mb-0.5">Status</div>
@@ -142,7 +132,6 @@ export const ChangesPanel: React.FC<ChangesPanelProps> = ({
                         </>
                       )}
 
-                      {/* Show work hours change if it changed */}
                       {(change.oldSettings.startTime !== change.newSettings.startTime || 
                         change.oldSettings.endTime !== change.newSettings.endTime) && (
                         <>
@@ -159,17 +148,31 @@ export const ChangesPanel: React.FC<ChangesPanelProps> = ({
                         </>
                       )}
 
-                      {/* Show lunch break change if it changed */}
                       {change.oldSettings.lunchDuration !== change.newSettings.lunchDuration && (
                         <>
                           <div className="text-[10px] text-gray-500 mb-0.5">Lunch Break</div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 mb-1">
                             <span className="font-medium text-gray-800">
                               {change.oldSettings.lunchDuration} min
                             </span>
                             <span className="text-gray-400">→</span>
                             <span className="font-medium text-gray-800">
                               {change.newSettings.lunchDuration} min
+                            </span>
+                          </div>
+                        </>
+                      )}
+
+                      {change.oldSettings.finishPostcode !== change.newSettings.finishPostcode && (
+                        <>
+                          <div className="text-[10px] text-gray-500 mb-0.5">Finish Location</div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-gray-800">
+                              {change.oldSettings.finishPostcode || 'None (returns to start)'}
+                            </span>
+                            <span className="text-gray-400">→</span>
+                            <span className="font-medium text-gray-800">
+                              {change.newSettings.finishPostcode || 'None (returns to start)'}
                             </span>
                           </div>
                         </>
@@ -181,7 +184,6 @@ export const ChangesPanel: React.FC<ChangesPanelProps> = ({
                     </div>
                   </div>
                   
-                  {/* Delete Button */}
                   <button
                     onClick={() => onDeleteAgentChange(change.agentIndex)}
                     disabled={isRecalculating}
@@ -212,9 +214,7 @@ export const ChangesPanel: React.FC<ChangesPanelProps> = ({
               );
             })}
 
-            {/* Case Changes */}
             {caseChanges.map((change, index) => {
-              // Type guard for PriorityChange
               const isPriorityChange = 'oldPriority' in change;
               
               return (
@@ -223,7 +223,6 @@ export const ChangesPanel: React.FC<ChangesPanelProps> = ({
                   className="mb-2 last:mb-0 p-2 bg-gray-50 rounded text-xs border border-gray-200 flex justify-between items-start gap-2"
                 >
                   <div className="flex-1">
-                    {/* Postcode with clipboard icon */}
                     <div className="flex items-center gap-2 mb-1">
                       <svg 
                         width="14" 
@@ -245,7 +244,6 @@ export const ChangesPanel: React.FC<ChangesPanelProps> = ({
                     </div>
                     
                     {isPriorityChange ? (
-                      // Priority Change Display
                       <div>
                         <div className="text-[10px] text-gray-500 mb-0.5">Priority</div>
                         <div className="flex items-center gap-2">
@@ -259,7 +257,6 @@ export const ChangesPanel: React.FC<ChangesPanelProps> = ({
                         </div>
                       </div>
                     ) : (
-                      // Time Slot Change Display
                       <div>
                         <div className="text-[10px] text-gray-500 mb-0.5">Delivery Slot</div>
                         <div className="flex items-center gap-2">
@@ -285,7 +282,6 @@ export const ChangesPanel: React.FC<ChangesPanelProps> = ({
                     </div>
                   </div>
                   
-                  {/* Delete Button */}
                   <button
                     onClick={() => onDeleteCaseChange(change.caseId, isPriorityChange ? 'priority' : 'slot')}
                     disabled={isRecalculating}
@@ -319,7 +315,6 @@ export const ChangesPanel: React.FC<ChangesPanelProps> = ({
         </div>
       )}
 
-      {/* Recalculate Button - Always visible at bottom */}
       <div className="p-3 shrink-0">
         <button
           onClick={onRecalculate}

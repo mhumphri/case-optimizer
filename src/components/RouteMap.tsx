@@ -1,7 +1,7 @@
 // components/RouteMap.tsx
 import React, { useState, useEffect, useRef } from 'react';
 import { GoogleMap, Marker, Polyline, InfoWindow, OverlayView } from '@react-google-maps/api';
-import type { Location, OptimizedRoute, CaseData } from '../types/route';
+import type { Location, OptimizedRoute, CaseData, AgentSettings, CasePriority, TimeSlot } from '../types/route';
 import { formatTime } from '../utils/formatters';
 
 interface RouteMapProps {
@@ -10,6 +10,8 @@ interface RouteMapProps {
   cases: CaseData[];
   unallocatedCases?: Array<CaseData & { unallocatedNumber: number }>;
   routesVersion?: number;
+  agentSettings: AgentSettings[];
+  originalCasePriorities: Map<string, { priority: CasePriority; deliverySlot?: TimeSlot }>;
 }
 
 const mapContainerStyle = {
@@ -18,7 +20,7 @@ const mapContainerStyle = {
 };
 
 const defaultCenter = {
-  lat: 51.5074, // London
+  lat: 51.5074,
   lng: -0.1278,
 };
 
@@ -74,19 +76,17 @@ const mapStyles: google.maps.MapTypeStyle[] = [
   }
 ];
 
-// Colors for different agent routes
 const ROUTE_COLORS = [
-  '#4285f4', // Blue
-  '#ea4335', // Red
-  '#fbbc04', // Yellow
-  '#34a853', // Green
-  '#ff6d00', // Orange
-  '#9c27b0', // Purple
-  '#00bcd4', // Cyan
-  '#e91e63', // Pink
+  '#4285f4',
+  '#ea4335',
+  '#fbbc04',
+  '#34a853',
+  '#ff6d00',
+  '#9c27b0',
+  '#00bcd4',
+  '#e91e63',
 ];
 
-// Create a custom marker icon with a person silhouette
 const createAgentMarkerIcon = (color: string): google.maps.Icon => {
   const svg = `
     <svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
@@ -105,12 +105,49 @@ const createAgentMarkerIcon = (color: string): google.maps.Icon => {
   };
 };
 
+const createFinishMarkerIcon = (color: string): google.maps.Icon => {
+  const svg = `
+    <svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="20" cy="20" r="18" fill="${color}" stroke="white" stroke-width="2"/>
+      <g transform="translate(21.5, 20) scale(0.75)">
+        <rect x="-10" y="-8" width="1.5" height="18" fill="white"/>
+        <g transform="translate(-9, -8)">
+          <rect x="0" y="0" width="4" height="3" fill="white"/>
+          <rect x="4" y="0" width="4" height="3" fill="#333"/>
+          <rect x="8" y="0" width="4" height="3" fill="white"/>
+          <rect x="12" y="0" width="4" height="3" fill="#333"/>
+          <rect x="0" y="3" width="4" height="3" fill="#333"/>
+          <rect x="4" y="3" width="4" height="3" fill="white"/>
+          <rect x="8" y="3" width="4" height="3" fill="#333"/>
+          <rect x="12" y="3" width="4" height="3" fill="white"/>
+          <rect x="0" y="6" width="4" height="3" fill="white"/>
+          <rect x="4" y="6" width="4" height="3" fill="#333"/>
+          <rect x="8" y="6" width="4" height="3" fill="white"/>
+          <rect x="12" y="6" width="4" height="3" fill="#333"/>
+          <rect x="0" y="9" width="4" height="3" fill="#333"/>
+          <rect x="4" y="9" width="4" height="3" fill="white"/>
+          <rect x="8" y="9" width="4" height="3" fill="#333"/>
+          <rect x="12" y="9" width="4" height="3" fill="white"/>
+        </g>
+      </g>
+    </svg>
+  `;
+  
+  return {
+    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+    scaledSize: new google.maps.Size(40, 40),
+    anchor: new google.maps.Point(20, 20),
+  };
+};
+
 export const RouteMap: React.FC<RouteMapProps> = ({ 
   routes, 
   agentLocations,
   cases,
   unallocatedCases = [],
-  routesVersion = 0
+  routesVersion = 0,
+  agentSettings,
+  originalCasePriorities,
 }) => {
   const [selectedMarker, setSelectedMarker] = useState<{
     type: 'allocated' | 'unallocated';
@@ -121,60 +158,64 @@ export const RouteMap: React.FC<RouteMapProps> = ({
 
   const mapRef = useRef<google.maps.Map | null>(null);
 
-  // Fit bounds to show all markers
-useEffect(() => {
-  // Add a small delay to ensure map is fully loaded after remount
-  const timer = setTimeout(() => {
-    if (!mapRef.current) return;
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (!mapRef.current) return;
 
-    const bounds = new google.maps.LatLngBounds();
-    let hasPoints = false;
+      const bounds = new google.maps.LatLngBounds();
+      let hasPoints = false;
 
-    // Add agent locations
-    agentLocations.forEach(location => {
-      bounds.extend({ lat: location.latitude, lng: location.longitude });
-      hasPoints = true;
-    });
+      agentLocations.forEach(location => {
+        bounds.extend({ lat: location.latitude, lng: location.longitude });
+        hasPoints = true;
+      });
 
-    // Add all route visit locations
-    routes.forEach(route => {
-      route.visits.forEach(visit => {
-        if (visit.arrivalLocation) {
+      agentSettings.forEach(settings => {
+        if (settings.finishLocation) {
           bounds.extend({ 
-            lat: visit.arrivalLocation.latitude, 
-            lng: visit.arrivalLocation.longitude 
+            lat: settings.finishLocation.latitude, 
+            lng: settings.finishLocation.longitude 
           });
           hasPoints = true;
         }
       });
-    });
 
-    // Add all unallocated case locations
-    unallocatedCases.forEach(caseData => {
-      if (caseData.location) {
-        bounds.extend({ 
-          lat: caseData.location.latitude, 
-          lng: caseData.location.longitude 
+      routes.forEach(route => {
+        route.visits.forEach(visit => {
+          if (visit.arrivalLocation) {
+            bounds.extend({ 
+              lat: visit.arrivalLocation.latitude, 
+              lng: visit.arrivalLocation.longitude 
+            });
+            hasPoints = true;
+          }
         });
-        hasPoints = true;
-      }
-    });
-
-    // Fit the map to the bounds
-    if (hasPoints) {
-      mapRef.current.fitBounds(bounds, {
-        top: 50,
-        bottom: 50,
-        left: 50,
-        right: 50,
       });
-    }
-  }, 100); // 100ms delay to ensure map is ready
 
-  return () => clearTimeout(timer);
-}, [routes, agentLocations, unallocatedCases, routesVersion]);
+      unallocatedCases.forEach(caseData => {
+        if (caseData.location) {
+          bounds.extend({ 
+            lat: caseData.location.latitude, 
+            lng: caseData.location.longitude 
+          });
+          hasPoints = true;
+        }
+      });
 
-  const getRoutePath = (route: OptimizedRoute, agentLocation: Location) => {
+      if (hasPoints) {
+        mapRef.current.fitBounds(bounds, {
+          top: 50,
+          bottom: 50,
+          left: 50,
+          right: 50,
+        });
+      }
+    }, 100);
+
+    return () => clearTimeout(timer);
+  }, [routes, agentLocations, unallocatedCases, routesVersion, agentSettings]);
+
+  const getRoutePath = (route: OptimizedRoute, agentLocation: Location, agentIndex: number) => {
     const path = [];
 
     if (agentLocation) {
@@ -193,27 +234,32 @@ useEffect(() => {
       }
     });
 
-    if (agentLocation) {
+    const finishLocation = agentSettings[agentIndex]?.finishLocation;
+    const endLocation = finishLocation || agentLocation;
+    
+    if (endLocation) {
       path.push({
-        lat: agentLocation.latitude,
-        lng: agentLocation.longitude,
+        lat: endLocation.latitude,
+        lng: endLocation.longitude,
       });
     }
 
     return path;
   };
 
-const getPolylineKey = (index: number) => {
-  return `polyline-${index}-v${routesVersion}`;
-};
-
-  // Helper to get case priority by postcode
-  const getCasePriority = (postcode: string): string => {
-    const caseData = cases.find(c => c.postcode === postcode);
-    return caseData?.priority || 'medium';
+  const getPolylineKey = (index: number) => {
+    return `polyline-${index}-v${routesVersion}`;
   };
 
-  // Process unallocated markers
+  const getCasePriority = (postcode: string): string => {
+    const caseData = cases.find(c => c.postcode === postcode);
+    if (!caseData) return 'medium';
+    
+    // Use original priority from last optimization, not current priority with pending changes
+    const originalData = originalCasePriorities.get(caseData.id);
+    return originalData?.priority || caseData.priority;
+  };
+
   const unallocatedMarkers = unallocatedCases
     .filter(caseData => !!caseData.location)
     .map((caseData) => {
@@ -221,7 +267,10 @@ const getPolylineKey = (index: number) => {
         selectedMarker?.type === 'unallocated' &&
         selectedMarker?.caseId === caseData.id;
 
-      const isHighPriority = caseData.priority === 'high';
+      // Use original priority from last optimization
+      const originalData = originalCasePriorities.get(caseData.id);
+      const displayPriority = originalData?.priority || caseData.priority;
+      const isHighPriority = displayPriority === 'high';
 
       return (
         <React.Fragment key={`unallocated-${caseData.id}`}>
@@ -247,7 +296,6 @@ const getPolylineKey = (index: number) => {
             onClick={() => setSelectedMarker({ type: 'unallocated', caseId: caseData.id })}
             zIndex={isHighPriority ? 1000 : 100}
           />
-          {/* High priority badge overlay */}
           {isHighPriority && (
             <OverlayView
               position={{
@@ -299,7 +347,7 @@ const getPolylineKey = (index: number) => {
                 <div>
                   Case {caseData.unallocatedNumber}: {caseData.postcode}
                 </div>
-                <div>Priority: {caseData.priority.toUpperCase()}</div>
+                <div>Priority: {displayPriority.toUpperCase()}</div>
               </div>
             </InfoWindow>
           )}
@@ -308,16 +356,16 @@ const getPolylineKey = (index: number) => {
     });
 
   return (
-<GoogleMap
-  key={`map-v${routesVersion}`} 
-  mapContainerStyle={mapContainerStyle}
+    <GoogleMap
+      key={`map-v${routesVersion}`}
+      mapContainerStyle={mapContainerStyle}
       center={defaultCenter}
       zoom={11}
       onLoad={(map) => {
         mapRef.current = map;
       }}
       options={{
-        styles: mapStyles, // Apply custom styles
+        styles: mapStyles,
         zoomControl: true,
         streetViewControl: false,
         mapTypeControl: false,
@@ -325,12 +373,11 @@ const getPolylineKey = (index: number) => {
         disableDefaultUI: false,
       }}
     >
-      {/* Agent Start Markers */}
       {agentLocations.map((location, index) => {
         const color = ROUTE_COLORS[index % ROUTE_COLORS.length];
         return (
           <Marker
-            key={`agent-${index}`}
+            key={`agent-start-${index}`}
             position={{
               lat: location.latitude,
               lng: location.longitude,
@@ -342,7 +389,24 @@ const getPolylineKey = (index: number) => {
         );
       })}
 
-      {/* Case Location Markers for all routes */}
+      {agentSettings.map((settings, index) => {
+        if (!settings.finishLocation) return null;
+        
+        const color = ROUTE_COLORS[index % ROUTE_COLORS.length];
+        return (
+          <Marker
+            key={`agent-finish-${index}`}
+            position={{
+              lat: settings.finishLocation.latitude,
+              lng: settings.finishLocation.longitude,
+            }}
+            icon={createFinishMarkerIcon(color)}
+            title={`Agent ${index + 1} Finish`}
+            zIndex={50}
+          />
+        );
+      })}
+
       {routes.map((route, routeIndex) =>
         route.visits.map((visit, visitIndex) => {
           if (!visit.arrivalLocation) return null;
@@ -379,7 +443,6 @@ const getPolylineKey = (index: number) => {
                 onClick={() => setSelectedMarker({ type: 'allocated', routeIndex, visitIndex })}
                 zIndex={isHighPriority ? 1000 : 100}
               />
-              {/* High priority badge overlay */}
               {isHighPriority && (
                 <OverlayView
                   position={{
@@ -442,26 +505,24 @@ const getPolylineKey = (index: number) => {
         })
       )}
 
-      {/* Unallocated Case Markers */}
       {unallocatedMarkers}
 
-      {/* Route Polylines for all agents */}
       {routes.map((route, index) => {
         if (!agentLocations[index] || route.visits.length === 0) return null;
 
-        const path = getRoutePath(route, agentLocations[index]);
+        const path = getRoutePath(route, agentLocations[index], index);
         if (path.length < 2) return null;
 
         return (
-<Polyline
-  key={getPolylineKey(index)}  // Changed from getPolylineKey(route, index)
-  path={path}
-  options={{
-    strokeColor: ROUTE_COLORS[index % ROUTE_COLORS.length],
-    strokeWeight: 3,
-    strokeOpacity: 0.7,
-  }}
-/>
+          <Polyline
+            key={getPolylineKey(index)}
+            path={path}
+            options={{
+              strokeColor: ROUTE_COLORS[index % ROUTE_COLORS.length],
+              strokeWeight: 3,
+              strokeOpacity: 0.7,
+            }}
+          />
         );
       })}
     </GoogleMap>

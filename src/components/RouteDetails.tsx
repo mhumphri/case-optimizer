@@ -21,16 +21,15 @@ interface RouteDetailsProps {
   onUnallocatedCasesUpdate?: (cases: Array<CaseData & { unallocatedNumber: number }>) => void;
 }
 
-// Colors for different agent routes (same as RouteMap)
 const ROUTE_COLORS = [
-  '#4285f4', // Blue
-  '#ea4335', // Red
-  '#fbbc04', // Yellow
-  '#34a853', // Green
-  '#ff6d00', // Orange
-  '#9c27b0', // Purple
-  '#00bcd4', // Cyan
-  '#e91e63', // Pink
+  '#4285f4',
+  '#ea4335',
+  '#fbbc04',
+  '#34a853',
+  '#ff6d00',
+  '#9c27b0',
+  '#00bcd4',
+  '#e91e63',
 ];
 
 type ViewMode = 'agents' | 'cases';
@@ -57,9 +56,8 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
   const [agentFilter, setAgentFilter] = useState<AgentFilter>('all');
   const [changesExpanded, setChangesExpanded] = useState(false);
 
-  // Helper function to get time in seconds for sorting
   const getTimeInSeconds = (time: string | { seconds: number } | undefined): number => {
-    if (!time) return Infinity; // Unallocated cases go to end
+    if (!time) return Infinity;
     if (typeof time === 'object' && 'seconds' in time) {
       return time.seconds;
     }
@@ -70,22 +68,16 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
     return Infinity;
   };
 
-  // Get the "optimized" agent status (status at last optimization)
-  // This is the status before any pending changes
   const getOptimizedAgentStatus = (agentIndex: number): boolean => {
     const agentChange = agentChanges.find(change => change.agentIndex === agentIndex);
     if (agentChange) {
-      // If there's a pending change, return the OLD status (before the change)
       return agentChange.oldSettings.active;
     }
-    // No pending change, so current status is the optimized status
     return agentSettings[agentIndex].active;
   };
 
-  // Create numbered unallocated cases
   const unallocatedCasesWithNumbers = useMemo(() => {
     const unallocated = cases.filter(c => c.assignedAgentIndex === null);
-    // Sort by case ID to maintain consistent ordering
     unallocated.sort((a, b) => a.id.localeCompare(b.id));
     
     const numbered = unallocated.map((caseData, index) => ({
@@ -101,7 +93,6 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
     return numbered;
   }, [cases]);
 
-  // Update parent component with unallocated cases
   useEffect(() => {
     if (onUnallocatedCasesUpdate) {
       console.log('📤 RouteDetails - Sending unallocated cases to parent:', unallocatedCasesWithNumbers.length);
@@ -109,7 +100,6 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
     }
   }, [unallocatedCasesWithNumbers, onUnallocatedCasesUpdate]);
 
-  // Create a map for quick lookup of unallocated numbers
   const unallocatedNumberMap = useMemo(() => {
     const map = new Map<string, number>();
     unallocatedCasesWithNumbers.forEach(c => {
@@ -118,7 +108,6 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
     return map;
   }, [unallocatedCasesWithNumbers]);
 
-  // Filter and sort agents based on optimized status
   const filteredAgents = useMemo(() => {
     const agentsWithIndex = routes.map((route, index) => ({
       route,
@@ -126,7 +115,6 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
       optimizedActive: getOptimizedAgentStatus(index),
     }));
 
-    // Filter based on selection
     let filtered = agentsWithIndex;
     if (agentFilter === 'active') {
       filtered = agentsWithIndex.filter(a => a.optimizedActive);
@@ -137,7 +125,6 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
     return filtered;
   }, [routes, agentSettings, agentChanges, agentFilter]);
 
-  // Calculate agent counts based on optimized status
   const agentCounts = useMemo(() => {
     const active = routes.filter((_, index) => getOptimizedAgentStatus(index)).length;
     const inactive = routes.length - active;
@@ -148,9 +135,7 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
     };
   }, [routes, agentSettings, agentChanges]);
 
-  // Sort and filter cases
   const filteredAndSortedCases = useMemo(() => {
-    // First filter
     let filtered = cases;
     if (caseFilter === 'allocated') {
       filtered = cases.filter(c => c.assignedAgentIndex !== null);
@@ -158,16 +143,13 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
       filtered = cases.filter(c => c.assignedAgentIndex === null);
     }
 
-    // Then sort
     return filtered.sort((a, b) => {
-      // First sort by allocated vs unallocated
       const aAllocated = a.assignedAgentIndex !== null;
       const bAllocated = b.assignedAgentIndex !== null;
 
-      if (aAllocated && !bAllocated) return -1; // Allocated first
+      if (aAllocated && !bAllocated) return -1;
       if (!aAllocated && bAllocated) return 1;
 
-      // Both allocated - sort by agent index and delivery time
       if (aAllocated && bAllocated) {
         const agentA = a.assignedAgentIndex!;
         const agentB = b.assignedAgentIndex!;
@@ -175,20 +157,17 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
           return agentA - agentB;
         }
 
-        // Same agent - sort by delivery time
         const timeA = getTimeInSeconds(a.deliveryTime);
         const timeB = getTimeInSeconds(b.deliveryTime);
         return timeA - timeB;
       }
 
-      // Both unallocated - sort by unallocated number
       const numA = unallocatedNumberMap.get(a.id) ?? Infinity;
       const numB = unallocatedNumberMap.get(b.id) ?? Infinity;
       return numA - numB;
     });
   }, [cases, caseFilter, unallocatedNumberMap]);
 
-  // Calculate case counts for filter options
   const caseCounts = useMemo(() => {
     const allocated = cases.filter(c => c.assignedAgentIndex !== null).length;
     const unallocated = cases.filter(c => c.assignedAgentIndex === null).length;
@@ -199,7 +178,6 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
     };
   }, [cases]);
 
-  // Handlers that also collapse the changes panel
   const handleViewModeChange = (mode: ViewMode) => {
     setViewMode(mode);
     setChangesExpanded(false);
@@ -215,11 +193,9 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
     setChangesExpanded(false);
   };
 
-  // Calculate total changes
   const totalChanges = caseChanges.length + agentChanges.length;
   const shouldShowChangesPanel = totalChanges > 0 || isRecalculating;
 
-  // Auto-collapse changes panel when all changes are deleted
   useEffect(() => {
     if (!shouldShowChangesPanel && changesExpanded) {
       setChangesExpanded(false);
@@ -230,9 +206,7 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
 
   return (
     <div className="flex flex-col h-full">
-      {/* Fixed Tab Bar */}
       <div className="shrink-0 p-4 border-b border-gray-200 bg-white">
-        {/* Tabs */}
         <div className="flex gap-2 mb-4">
           <button
             onClick={() => handleViewModeChange('agents')}
@@ -248,9 +222,7 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
               viewBox="0 0 24 24" 
               fill="currentColor"
             >
-              {/* Head - larger and positioned higher */}
               <circle cx="12" cy="7" r="5.5" />
-              {/* Body - wider and extends to bottom */}
               <path d="M2 22 Q 2 15, 6 12.5 L 18 12.5 Q 22 15, 22 22 Z" />
             </svg>
             <span>Agents</span>
@@ -280,7 +252,6 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
           </button>
         </div>
 
-        {/* Filter Dropdown - Show based on view mode */}
         {viewMode === 'agents' && (
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1">
@@ -316,11 +287,9 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
         )}
       </div>
 
-      {/* Scrollable Content Area - Hidden when changes expanded */}
       {!changesExpanded && (
         <div className="flex-1 min-h-0 overflow-y-auto p-4">
           {viewMode === 'agents' ? (
-            // Agents View
             <div className="space-y-4">
               {filteredAgents.length === 0 ? (
                 <div className="text-center py-8 text-gray-500">
@@ -343,7 +312,6 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
               )}
             </div>
           ) : (
-            // Cases View
             <div className="space-y-4">
               {filteredAndSortedCases.length === 0 ? (
                 <div className="text-center py-8 text-gray-500">
@@ -351,9 +319,8 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
                 </div>
               ) : (
                 filteredAndSortedCases.map((caseData) => {
-                  // Find which agent this case is assigned to
                   let agentLabel: string | null = null;
-                  let agentColor = '#9ca3af'; // Grey for unallocated
+                  let agentColor = '#9ca3af';
                   let routeNumber: number | null = null;
                   let unallocatedNumber: number | null = null;
 
@@ -363,18 +330,15 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
                       agentLabel = route.vehicleLabel.replace('Vehicle', 'Agent');
                       agentColor = ROUTE_COLORS[caseData.assignedAgentIndex % ROUTE_COLORS.length];
 
-                      // Find the visit index (position in route) for this case
                       const visitIndex = route.visits.findIndex(visit => {
-                        // Match by shipment index which corresponds to case
                         return visit.shipmentLabel === caseData.postcode;
                       });
 
                       if (visitIndex >= 0) {
-                        routeNumber = visitIndex + 1; // 1-indexed for display
+                        routeNumber = visitIndex + 1;
                       }
                     }
                   } else {
-                    // Unallocated case - get its number
                     unallocatedNumber = unallocatedNumberMap.get(caseData.id) ?? null;
                   }
 
@@ -397,7 +361,6 @@ export const RouteDetails: React.FC<RouteDetailsProps> = ({
         </div>
       )}
 
-      {/* Changes Panel - Only render container if there are changes or recalculating */}
       {shouldShowChangesPanel && (
         <div className={changesExpanded ? "flex-1 min-h-0 bg-white" : "bg-white shrink-0"}>
           <ChangesPanel
