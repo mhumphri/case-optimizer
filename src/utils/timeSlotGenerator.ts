@@ -28,7 +28,7 @@ const generateRandomTimeIncrements = (): string => {
  */
 export const generateDeliverySlot = (): TimeSlot | undefined => {
   // 1 in 12 cases should have a delivery slot
-  if (Math.random() > 1/12) {
+  if (Math.random() > 1/3) {
     return undefined;
   }
   
