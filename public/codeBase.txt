@@ -1,0 +1,4096 @@
+// FRONTEND - components
+
+import React from 'react';
+import RouteOptimizer from './RouteOptimizer';
+
+function App() {
+  return <RouteOptimizer />;
+}
+
+export default App;
+
+
+// RouteOptimizer.tsx
+import React, { useState, useRef } from 'react';
+import { useJsApiLoader } from '@react-google-maps/api';
+import type { Location, OptimizedRoute, CaseData, CasePriority, CaseChange, TimeSlot, AgentSettings, AgentChange, ScenarioConfig, ScenarioType } from './types/route';
+import { RouteMap } from './components/RouteMap';
+import { RouteDetails } from './components/RouteDetails';
+import { Header } from './components/Header';
+
+// Scenario Definitions
+const SCENARIOS: Record<ScenarioType, ScenarioConfig> = {
+  full: {
+    name: 'Full Scenario',
+    description: '200 cases across 6 agents',
+    caseCount: 200,
+    agentPostcodes: ['W6 9LI', 'W2 3EL', 'SE12 4WH', 'E10 1PI', 'SE14 5NP', 'SW15 7GB'],
+    defaultStartTime: '09:00',
+    defaultEndTime: '17:00',
+    defaultLunchDuration: 45,
+  },
+  reduced: {
+    name: 'Reduced Scenario',
+    description: '8 cases across 2 agents',
+    caseCount: 8,
+    agentPostcodes: ['W6 9LI', 'SE14 5NP'], // Subset of full scenario agents
+    defaultStartTime: '10:30',
+    defaultEndTime: '14:00',
+    defaultLunchDuration: 45,
+  },
+};
+
+const RouteOptimizer: React.FC = () => {
+  const [loading, setLoading] = useState(false);
+  const [optimizedRoutes, setOptimizedRoutes] = useState<OptimizedRoute[]>([]);
+  const [error, setError] = useState('');
+  const [agentLocations, setAgentLocations] = useState<Location[]>([]);
+  const [cases, setCases] = useState<CaseData[]>([]);
+  const [caseChanges, setCaseChanges] = useState<CaseChange[]>([]);
+  const [agentSettings, setAgentSettings] = useState<AgentSettings[]>([]);
+  const [agentChanges, setAgentChanges] = useState<AgentChange[]>([]);
+  const [selectedScenario, setSelectedScenario] = useState<ScenarioType | null>(null);
+  const [unallocatedCases, setUnallocatedCases] = useState<Array<CaseData & { unallocatedNumber: number }>>([]);
+  const [routesVersion, setRoutesVersion] = useState(0);
+
+  // Store original case data and agent settings for change tracking
+  const originalCaseData = useRef<Map<string, { priority: CasePriority; deliverySlot?: TimeSlot }>>(new Map());
+  const originalAgentSettings = useRef<AgentSettings[]>([]);
+  const currentScenarioConfig = useRef<ScenarioConfig | null>(null);
+
+  const googleMapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+
+  const { isLoaded, loadError } = useJsApiLoader({
+    googleMapsApiKey: googleMapsApiKey || '',
+  });
+
+  const handlePriorityChange = (caseId: string, newPriority: CasePriority) => {
+    // Find the case first to get its current priority
+    const targetCase = cases.find(c => c.id === caseId);
+    if (!targetCase) return;
+
+    const currentPriority = targetCase.priority;
+
+    // Only update if priority actually changed
+    if (currentPriority !== newPriority) {
+      // Update the case priority
+      setCases(prevCases =>
+        prevCases.map(c =>
+          c.id === caseId ? { ...c, priority: newPriority } : c
+        )
+      );
+
+      // Update changes list based on original priority
+      setCaseChanges(prev => {
+        const originalData = originalCaseData.current.get(caseId);
+        if (!originalData) return prev;
+
+        const originalPriority = originalData.priority;
+
+        // Remove any existing priority change for this case
+        const filteredChanges = prev.filter(change =>
+          !(change.caseId === caseId && 'oldPriority' in change)
+        );
+
+        // If new priority is same as original, no change to track
+        if (newPriority === originalPriority) {
+          return filteredChanges;
+        }
+
+        // Otherwise, add/update the priority change
+        return [
+          ...filteredChanges,
+          {
+            caseId: targetCase.id,
+            casePostcode: targetCase.postcode,
+            oldPriority: originalPriority,
+            newPriority,
+            timestamp: new Date(),
+          }
+        ];
+      });
+    }
+  };
+
+  const handleSlotChange = (caseId: string, newSlot: TimeSlot | undefined) => {
+    const targetCase = cases.find(c => c.id === caseId);
+    if (!targetCase) return;
+
+    // Update the case delivery slot
+    setCases(prevCases =>
+      prevCases.map(c =>
+        c.id === caseId ? { ...c, deliverySlot: newSlot } : c
+      )
+    );
+
+    // Update changes list based on original slot
+    setCaseChanges(prev => {
+      const originalData = originalCaseData.current.get(caseId);
+      if (!originalData) return prev;
+
+      const originalSlot = originalData.deliverySlot;
+
+      // Remove any existing slot change for this case
+      const filteredChanges = prev.filter(change =>
+        !(change.caseId === caseId && 'oldSlot' in change)
+      );
+
+      // Compare slots (considering undefined)
+      const slotsEqual =
+        (originalSlot === undefined && newSlot === undefined) ||
+        (originalSlot && newSlot &&
+          originalSlot.startTime === newSlot.startTime &&
+          originalSlot.endTime === newSlot.endTime);
+
+      // If slot is same as original, no change to track
+      if (slotsEqual) {
+        return filteredChanges;
+      }
+
+      // Otherwise, add/update the slot change
+      return [
+        ...filteredChanges,
+        {
+          caseId: targetCase.id,
+          casePostcode: targetCase.postcode,
+          oldSlot: originalSlot,
+          newSlot: newSlot,
+          timestamp: new Date(),
+        }
+      ];
+    });
+  };
+
+  const handleAgentSettingsChange = (agentIndex: number, newSettings: AgentSettings) => {
+    // Validation: start time cannot be after finish time (only if active)
+    if (newSettings.active && newSettings.startTime >= newSettings.endTime) {
+      return; // Invalid, ignore the change
+    }
+
+    // Update agent settings
+    setAgentSettings(prev => {
+      const updated = [...prev];
+      updated[agentIndex] = newSettings;
+      return updated;
+    });
+
+    // Update changes list based on original settings
+    setAgentChanges(prev => {
+      const originalSettings = originalAgentSettings.current[agentIndex];
+      if (!originalSettings) return prev;
+
+      // Remove any existing change for this agent
+      const filteredChanges = prev.filter(change => change.agentIndex !== agentIndex);
+
+      // Check if settings match original
+      const settingsEqual =
+        originalSettings.startTime === newSettings.startTime &&
+        originalSettings.endTime === newSettings.endTime &&
+        originalSettings.lunchDuration === newSettings.lunchDuration &&
+        originalSettings.active === newSettings.active;
+
+      // If same as original, no change to track
+      if (settingsEqual) {
+        return filteredChanges;
+      }
+
+      // Otherwise, add/update the agent change
+      const route = optimizedRoutes[agentIndex];
+      return [
+        ...filteredChanges,
+        {
+          agentIndex,
+          agentLabel: route?.vehicleLabel?.replace('Vehicle', 'Agent') || `Agent ${agentIndex + 1}`,
+          oldSettings: originalSettings,
+          newSettings,
+          timestamp: new Date(),
+        }
+      ];
+    });
+  };
+
+  const handleDeleteCaseChange = (caseId: string, changeType: 'priority' | 'slot') => {
+    // Get the original data
+    const originalData = originalCaseData.current.get(caseId);
+    if (!originalData) return;
+
+    if (changeType === 'priority') {
+      // Restore the case to its original priority
+      setCases(prevCases =>
+        prevCases.map(c =>
+          c.id === caseId ? { ...c, priority: originalData.priority } : c
+        )
+      );
+
+      // Remove the priority change from the list
+      setCaseChanges(prev =>
+        prev.filter(change =>
+          !(change.caseId === caseId && 'oldPriority' in change)
+        )
+      );
+    } else {
+      // Restore the case to its original slot
+      setCases(prevCases =>
+        prevCases.map(c =>
+          c.id === caseId ? { ...c, deliverySlot: originalData.deliverySlot } : c
+        )
+      );
+
+      // Remove the slot change from the list
+      setCaseChanges(prev =>
+        prev.filter(change =>
+          !(change.caseId === caseId && 'oldSlot' in change)
+        )
+      );
+    }
+  };
+
+  const handleDeleteAgentChange = (agentIndex: number) => {
+    const originalSettings = originalAgentSettings.current[agentIndex];
+    if (!originalSettings) return;
+
+    // Restore agent to original settings
+    setAgentSettings(prev => {
+      const updated = [...prev];
+      updated[agentIndex] = originalSettings;
+      return updated;
+    });
+
+    // Remove the agent change from the list
+    setAgentChanges(prev => prev.filter(change => change.agentIndex !== agentIndex));
+  };
+
+  const handleRecalculate = async () => {
+    try {
+      // Re-run optimization with current case priorities/slots and agent settings
+      await optimizeRoutes(cases, agentSettings);
+
+      // Clear changes lists only after successful recalculation
+      setCaseChanges([]);
+      setAgentChanges([]);
+    } catch (error) {
+      // Keep changes visible if recalculation fails
+      console.error('Recalculation failed:', error);
+    }
+  };
+
+  const handleScenarioSelect = (scenarioType: ScenarioType) => {
+    setSelectedScenario(scenarioType);
+    currentScenarioConfig.current = SCENARIOS[scenarioType];
+    optimizeRoutes(undefined, undefined, scenarioType);
+  };
+
+  const optimizeRoutes = async (
+    existingCases?: CaseData[],
+    existingAgentSettings?: AgentSettings[],
+    scenarioType?: ScenarioType
+  ) => {
+    setLoading(true);
+    setError('');
+
+    // Determine which scenario to use
+    const scenario = scenarioType
+      ? SCENARIOS[scenarioType]
+      : currentScenarioConfig.current || SCENARIOS.full;
+
+    // Clear changes if this is a new optimization (not a recalculation)
+    if (!existingCases) {
+      setCaseChanges([]);
+      setAgentChanges([]);
+    }
+
+    // Import utilities
+    const { generateMultiplePostcodes, timeToSeconds } = await import('./utils/locationGenerator');
+    const { generateCasePriority } = await import('./utils/caseGenerator');
+    const { getPenaltyCost } = await import('./utils/priorityMapping');
+    const { geocodePostcodes } = await import('./utils/geocoding');
+    const { generateDeliverySlot, timeStringToSeconds } = await import('./utils/timeSlotGenerator');
+
+    let initialCases: CaseData[];
+    let currentAgentSettings: AgentSettings[];
+
+    // Use existing cases if recalculating, otherwise generate new ones
+    if (existingCases && existingCases.length > 0) {
+      initialCases = existingCases;
+      currentAgentSettings = existingAgentSettings || agentSettings;
+      console.log('🔄 Recalculating with updated priorities, slots, and agent settings...');
+      console.log(`  ${caseChanges.length} case changes + ${agentChanges.length} agent changes to apply`);
+
+      // Log the changes
+      caseChanges.forEach(change => {
+        if ('oldPriority' in change) {
+          console.log(`  - ${change.casePostcode}: priority ${change.oldPriority} → ${change.newPriority}`);
+        } else {
+          const oldSlot = change.oldSlot ? `${change.oldSlot.startTime}-${change.oldSlot.endTime}` : 'None';
+          const newSlot = change.newSlot ? `${change.newSlot.startTime}-${change.newSlot.endTime}` : 'None';
+          console.log(`  - ${change.casePostcode}: slot ${oldSlot} → ${newSlot}`);
+        }
+      });
+
+      agentChanges.forEach(change => {
+        console.log(`  - ${change.agentLabel}:`);
+        console.log(`    Hours: ${change.oldSettings.startTime}-${change.oldSettings.endTime} → ${change.newSettings.startTime}-${change.newSettings.endTime}`);
+        console.log(`    Lunch: ${change.oldSettings.lunchDuration}min → ${change.newSettings.lunchDuration}min`);
+      });
+    } else {
+      // Generate cases based on scenario
+      console.log(`📍 Generating ${scenario.caseCount} unique cases from real postcodes...`);
+      console.log(`  Scenario: ${scenario.name}`);
+      console.log(`  Agents: ${scenario.agentPostcodes.length}`);
+      console.log(`  Default hours: ${scenario.defaultStartTime}-${scenario.defaultEndTime}`);
+
+      const postcodes = generateMultiplePostcodes(scenario.caseCount);
+
+      initialCases = postcodes.map((postcodeCase, index) => ({
+        id: `case-${index + 1}`,
+        postcode: postcodeCase.postcode,
+        priority: generateCasePriority(),
+        deliverySlot: generateDeliverySlot(), // 1 in 12 cases get a delivery slot
+        status: 'pending' as const,
+        assignedAgentIndex: null,
+      }));
+
+      // Initialize agent settings with scenario defaults
+      currentAgentSettings = scenario.agentPostcodes.map(() => ({
+        startTime: scenario.defaultStartTime,
+        endTime: scenario.defaultEndTime,
+        lunchDuration: scenario.defaultLunchDuration,
+        active: true, // All agents start as active
+      }));
+
+      setAgentSettings(currentAgentSettings);
+      originalAgentSettings.current = currentAgentSettings.map(s => ({ ...s }));
+
+      // Geocode all postcodes (cases + agents)
+      console.log('🌍 Geocoding postcodes...');
+      const allPostcodes = [...new Set([...postcodes.map(p => p.postcode), ...scenario.agentPostcodes])];
+
+      const geocodedLocations = await geocodePostcodes(allPostcodes, (completed, total) => {
+        console.log(`  Geocoded ${completed}/${total} postcodes`);
+      });
+
+      console.log(`✅ Geocoded ${geocodedLocations.size} unique postcodes`);
+
+      // Add geocoded locations to cases
+      initialCases = initialCases.map(c => ({
+        ...c,
+        location: geocodedLocations.get(c.postcode),
+      }));
+
+      // Store original case data for change tracking
+      originalCaseData.current = new Map(
+        initialCases.map(c => [c.id, { priority: c.priority, deliverySlot: c.deliverySlot }])
+      );
+
+      // Store geocoded agent locations
+      const agentLocs = scenario.agentPostcodes.map(pc => geocodedLocations.get(pc)).filter(Boolean) as Location[];
+      setAgentLocations(agentLocs);
+    }
+
+    // Filter out cases without coordinates
+    const casesWithCoords = initialCases.filter(c => c.location);
+    if (casesWithCoords.length < initialCases.length) {
+      console.warn(`⚠️ ${initialCases.length - casesWithCoords.length} cases failed to geocode and will be skipped`);
+    }
+
+    const shipments = casesWithCoords.map((caseData) => {
+      const baseShipment = {
+        deliveries: [
+          {
+            arrivalLocation: {
+              latitude: caseData.location!.latitude,
+              longitude: caseData.location!.longitude,
+            },
+            duration: { seconds: 300 }, // 5 minutes per case
+            timeWindows: [
+              // Use shift time window from agent settings (will be set per vehicle below)
+              {
+                startTime: { seconds: timeToSeconds('09:00') },
+                endTime: { seconds: timeToSeconds('17:00') },
+              }
+            ],
+          },
+        ],
+        label: caseData.postcode,
+        // Penalty cost for NOT completing this delivery (based on priority)
+        penaltyCost: getPenaltyCost(caseData.priority),
+      };
+
+      // If case has a delivery slot, override with specific time window
+      if (caseData.deliverySlot) {
+        baseShipment.deliveries[0].timeWindows = [{
+          startTime: { seconds: timeStringToSeconds(caseData.deliverySlot.startTime) },
+          endTime: { seconds: timeStringToSeconds(caseData.deliverySlot.endTime) },
+        }];
+      }
+
+      return baseShipment;
+    });
+
+    // Build vehicles with custom time windows per agent (only for active agents)
+    const activeAgentIndices: number[] = []; // Track which agents are active
+    const vehicles = scenario.agentPostcodes
+      .map((postcode, index) => {
+        const settings = currentAgentSettings[index];
+
+        // Skip inactive agents
+        if (!settings.active) {
+          return null;
+        }
+
+        activeAgentIndices.push(index); // Track this agent's original index
+
+        const shiftTimeWindow = {
+          startTime: { seconds: timeToSeconds(settings.startTime) },
+          endTime: { seconds: timeToSeconds(settings.endTime) },
+        };
+
+        const vehicle: any = {
+          startLocation: agentLocations[index] || { latitude: 51.5074, longitude: -0.1278 },
+          endLocation: agentLocations[index] || { latitude: 51.5074, longitude: -0.1278 },
+          label: `Agent ${index + 1} (${postcode})`,
+          startTimeWindows: [shiftTimeWindow],
+          endTimeWindows: [shiftTimeWindow],
+        };
+
+        // Only add lunch break if duration > 0
+        if (settings.lunchDuration > 0) {
+          // Lunch break starts at midpoint of shift
+          const shiftStart = timeToSeconds(settings.startTime);
+          const shiftEnd = timeToSeconds(settings.endTime);
+          const shiftMidpoint = Math.floor((shiftStart + shiftEnd) / 2);
+
+          vehicle.breakRule = {
+            breakRequests: [
+              {
+                earliestStartTime: { seconds: shiftMidpoint - 1800 }, // 30 min before midpoint
+                latestStartTime: { seconds: shiftMidpoint + 1800 }, // 30 min after midpoint
+                minDuration: { seconds: settings.lunchDuration * 60 },
+              },
+            ],
+          };
+        }
+
+        return vehicle;
+      })
+      .filter(vehicle => vehicle !== null); // Remove null entries (inactive agents)
+
+    // Set up time context for London timezone
+    const today = new Date();
+    const londonDate = new Date(today.toLocaleString('en-US', { timeZone: 'Europe/London' }));
+    londonDate.setHours(0, 0, 0, 0); // Start of day in London
+
+    console.log('🌍 Setting global time context:');
+    console.log(`  Start: ${londonDate.toISOString()}`);
+    console.log(`  Timezone: Europe/London`);
+
+    const requestBody = {
+      model: {
+        shipments,
+        vehicles,
+        // Explicitly set the reference time for the optimization
+        // This ensures time windows are interpreted in London timezone
+        globalStartTime: londonDate.toISOString(),
+        globalEndTime: new Date(londonDate.getTime() + 24 * 60 * 60 * 1000).toISOString(),
+      },
+    };
+
+    try {
+      console.log('📤 Sending optimization request...');
+
+      // Debug: Log sample shipment to verify structure
+      if (shipments.length > 0) {
+        console.log('📦 Sample shipment structure:', JSON.stringify(shipments[0], null, 2));
+        const slotsCount = shipments.filter(s =>
+          s.deliveries[0].timeWindows[0].startTime.seconds !== 32400
+        ).length;
+        console.log(`  Cases with delivery slots: ${slotsCount}/${shipments.length}`);
+      }
+
+      // Log priority distribution
+      const priorityDistribution = {
+        high: initialCases.filter(c => c.priority === 'high').length,
+        medium: initialCases.filter(c => c.priority === 'medium').length,
+        low: initialCases.filter(c => c.priority === 'low').length,
+      };
+      console.log('📊 Priority Distribution:', priorityDistribution);
+      console.log('💰 Penalty Costs: High=£1000, Medium=£300, Low=£100');
+
+      // Log agent settings
+      console.log('👤 Agent Settings:');
+      currentAgentSettings.forEach((settings, index) => {
+        if (settings.active) {
+          console.log(`  Agent ${index + 1}: ${settings.startTime}-${settings.endTime}, ${settings.lunchDuration}min lunch [ACTIVE]`);
+        } else {
+          console.log(`  Agent ${index + 1}: [INACTIVE]`);
+        }
+      });
+      console.log(`  Active agents: ${activeAgentIndices.length}/${currentAgentSettings.length}`);
+
+      const response = await fetch('http://localhost:3001/api/optimize-routes', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.details || `HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('✅ API Response:', data);
+
+      const routes: OptimizedRoute[] = data.routes?.map((route: any, apiRouteIndex: number) => ({
+        vehicleLabel: route.vehicleLabel || `Vehicle ${apiRouteIndex + 1}`,
+        visits: route.visits?.map((visit: any) => {
+          const shipmentIndex = visit.shipmentIndex;
+          const caseData = casesWithCoords[shipmentIndex];
+
+          return {
+            shipmentIndex: visit.shipmentIndex,
+            shipmentLabel: visit.shipmentLabel || caseData?.postcode || `Stop ${shipmentIndex + 1}`,
+            startTime: visit.startTime,
+            arrivalLocation: caseData?.location,
+          };
+        }) || [],
+        metrics: {
+          travelDuration: route.metrics?.travelDuration || { seconds: 0 },
+          travelDistance: route.metrics?.travelDistanceMeters || 0,
+        },
+      })) || [];
+
+      // Create a full routes array with placeholders for inactive agents
+      // This ensures route indices match agent indices
+      const fullRoutes: OptimizedRoute[] = scenario.agentPostcodes.map((postcode, index) => {
+        const settings = currentAgentSettings[index];
+
+        if (!settings.active) {
+          // Inactive agent - create empty route placeholder
+          return {
+            vehicleLabel: `Agent ${index + 1} (${postcode})`,
+            visits: [],
+            metrics: {
+              travelDuration: { seconds: 0 },
+              travelDistance: 0,
+            },
+          };
+        }
+
+        // Active agent - find corresponding route from API response
+        const apiRouteIndex = activeAgentIndices.indexOf(index);
+        return routes[apiRouteIndex] || {
+          vehicleLabel: `Agent ${index + 1} (${postcode})`,
+          visits: [],
+          metrics: {
+            travelDuration: { seconds: 0 },
+            travelDistance: 0,
+          },
+        };
+      });
+
+      // Update case assignments based on optimization results
+      const updatedCases = initialCases.map(caseData => {
+        // Find which agent was assigned this case and when
+        let assignedRouteIndex = -1;
+        let deliveryTime: string | { seconds: number } | undefined = undefined;
+
+        // Search through all routes (including inactive placeholders)
+        for (let routeIdx = 0; routeIdx < fullRoutes.length; routeIdx++) {
+          const visit = fullRoutes[routeIdx].visits.find(v => {
+            // Match by postcode label
+            return v.shipmentLabel === caseData.postcode;
+          });
+
+          if (visit) {
+            assignedRouteIndex = routeIdx;
+            deliveryTime = visit.startTime;
+            break;
+          }
+        }
+
+        return {
+          ...caseData,
+          assignedAgentIndex: assignedRouteIndex >= 0 ? assignedRouteIndex : null,
+          deliveryTime: deliveryTime,
+        };
+      });
+
+      setOptimizedRoutes(fullRoutes);
+      setCases(updatedCases);
+      setRoutesVersion(prev => prev + 1); 
+    } catch (err) {
+      console.error('❌ Error:', err);
+      setError(err instanceof Error ? err.message : 'An error occurred');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loadError) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-gray-100">
+        {/* Error Content */}
+        <div className="text-center p-8 bg-white rounded-lg shadow-lg">
+          <h2 className="text-xl font-bold text-red-600 mb-4">❌ Map Loading Error:</h2>
+          <p className="text-gray-700">Failed to load Google Maps. Please check your API key.</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-screen bg-gray-50">
+      <Header />
+
+      {/* Two Column Layout - fills remaining space */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left Column - Map */}
+        <div className="flex-1 relative">
+          {!googleMapsApiKey && (
+            <div className="absolute inset-0 flex items-center justify-center bg-gray-100 z-10">
+              <div className="text-center p-8 bg-white rounded-lg shadow-lg max-w-md">
+                <h2 className="text-xl font-bold text-yellow-600 mb-4">⚠️ Google Maps API Key Missing:</h2>
+                <p className="text-gray-700">
+                  Add `VITE_GOOGLE_MAPS_API_KEY` to your .env file to enable the map.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Scenario Selection - Only show when no routes optimized */}
+          {optimizedRoutes.length === 0 && !loading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-gray-50 z-10">
+              <div className="max-w-4xl w-full px-8">
+                <h1 className="text-3xl font-bold text-gray-900 mb-8 text-center">
+                  Choose Optimization Scenario
+                </h1>
+
+                <div className="grid md:grid-cols-2 gap-6">
+                  {/* Full Scenario Card */}
+                  <div className="bg-white rounded-lg shadow-lg p-6 border-2 border-blue-200 hover:border-blue-400 transition-colors">
+                    <h2 className="text-2xl font-bold text-blue-600 mb-4">📊 Full Scenario</h2>
+                    <ul className="space-y-2 mb-6 text-gray-700">
+                      <li>✓ 200 cases across London</li>
+                      <li>✓ 6 agents (W6 9LI, W2 3EL, SE12 4WH, E10 1PI, SE14 5NP, SW15 7GB)</li>
+                      <li>✓ Default hours: 09:00-17:00</li>
+                      <li>✓ 45-minute lunch break</li>
+                      <li>✓ Priority-based optimization</li>
+                      <li>✓ ~1 in 12 cases with delivery slots</li>
+                    </ul>
+                    <button
+                      onClick={() => handleScenarioSelect('full')}
+                      className="w-full px-6 py-3 text-base font-bold text-white bg-blue-500 border-none rounded cursor-pointer hover:bg-blue-600 transition-colors"
+                    >
+                      🚀 Run Full Scenario
+                    </button>
+                  </div>
+
+                  {/* Reduced Scenario Card */}
+                  <div className="bg-white rounded-lg shadow-lg p-6 border-2 border-green-200 hover:border-green-400 transition-colors">
+                    <h2 className="text-2xl font-bold text-green-600 mb-4">📉 Reduced Scenario</h2>
+                    <ul className="space-y-2 mb-6 text-gray-700">
+                      <li>✓ 15 cases across London</li>
+                      <li>✓ 2 agents (W6 9LI, W2 3EL)</li>
+                      <li>✓ Default hours: 11:30-14:00</li>
+                      <li>✓ 45-minute lunch break</li>
+                      <li>✓ Priority-based optimization</li>
+                      <li>✓ ~1 in 12 cases with delivery slots</li>
+                    </ul>
+                    <button
+                      onClick={() => handleScenarioSelect('reduced')}
+                      className="w-full px-6 py-3 text-base font-bold text-white bg-green-500 border-none rounded cursor-pointer hover:bg-green-600 transition-colors"
+                    >
+                      🚀 Run Reduced Scenario
+                    </button>
+                  </div>
+                </div>
+
+                <p className="text-center text-sm text-gray-600 mt-6">
+                  All scenarios use real London postcodes and Google Route Optimization API
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Loading State */}
+          {loading && optimizedRoutes.length === 0 && (
+            <div className="absolute inset-0 flex items-center justify-center bg-gray-50 z-10">
+              <div className="text-center">
+                <div className="text-4xl mb-4">⏳</div>
+                <h2 className="text-xl font-bold text-gray-900 mb-2">Geocoding & Optimizing...</h2>
+                <p className="text-gray-600">
+                  {selectedScenario === 'full'
+                    ? 'Processing 200 cases across 6 agents'
+                    : 'Processing 40 cases across 2 agents'}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {error && (
+            <div className="absolute inset-0 flex items-center justify-center bg-gray-50 z-10">
+              <div className="text-center p-8 bg-white rounded-lg shadow-lg max-w-md">
+                <h2 className="text-xl font-bold text-red-600 mb-4">❌ Error:</h2>
+                <p className="text-gray-700">{error}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Map Section - Fill entire container */}
+          {optimizedRoutes.length > 0 && googleMapsApiKey && isLoaded && (
+            <div className="relative w-full h-full">
+<RouteMap
+  routes={optimizedRoutes}
+  agentLocations={agentLocations}
+  cases={cases}
+  unallocatedCases={unallocatedCases}
+  routesVersion={routesVersion}
+/>
+            </div>
+          )}
+
+          {/* Map Loading State */}
+          {optimizedRoutes.length > 0 && googleMapsApiKey && !isLoaded && (
+            <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
+              <div className="text-lg text-gray-700">Loading map...</div>
+            </div>
+          )}
+        </div>
+
+        {/* Right Column - Tabbed Interface */}
+        {optimizedRoutes.length > 0 && (
+          <div className="w-[400px] border-l border-gray-200 bg-white">
+            <RouteDetails
+              routes={optimizedRoutes}
+              cases={cases}
+              agentSettings={agentSettings}
+              onPriorityChange={handlePriorityChange}
+              onSlotChange={handleSlotChange}
+              onAgentSettingsChange={handleAgentSettingsChange}
+              caseChanges={caseChanges}
+              agentChanges={agentChanges}
+              onRecalculate={handleRecalculate}
+              onDeleteCaseChange={handleDeleteCaseChange}
+              onDeleteAgentChange={handleDeleteAgentChange}
+              isRecalculating={loading}
+              onUnallocatedCasesUpdate={setUnallocatedCases}
+            />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default RouteOptimizer;
+
+// components/RouteDetails.tsx
+import React, { useState, useMemo, useEffect } from 'react';
+import type { OptimizedRoute, CaseData, CasePriority, CaseChange, TimeSlot, AgentSettings, AgentChange } from '../types/route';
+import { AgentCard } from './AgentCard';
+import { CaseCard } from './CaseCard';
+import { ChangesPanel } from './ChangesPanel';
+
+interface RouteDetailsProps {
+  routes: OptimizedRoute[];
+  cases: CaseData[];
+  agentSettings: AgentSettings[];
+  onPriorityChange: (caseId: string, priority: CasePriority) => void;
+  onSlotChange: (caseId: string, slot: TimeSlot | undefined) => void;
+  onAgentSettingsChange: (agentIndex: number, settings: AgentSettings) => void;
+  caseChanges: CaseChange[];
+  agentChanges: AgentChange[];
+  onRecalculate: () => void;
+  onDeleteCaseChange: (caseId: string, changeType: 'priority' | 'slot') => void;
+  onDeleteAgentChange: (agentIndex: number) => void;
+  isRecalculating: boolean;
+  onUnallocatedCasesUpdate?: (cases: Array<CaseData & { unallocatedNumber: number }>) => void;
+}
+
+// Colors for different agent routes (same as RouteMap)
+const ROUTE_COLORS = [
+  '#4285f4', // Blue
+  '#ea4335', // Red
+  '#fbbc04', // Yellow
+  '#34a853', // Green
+  '#ff6d00', // Orange
+  '#9c27b0', // Purple
+  '#00bcd4', // Cyan
+  '#e91e63', // Pink
+];
+
+type ViewMode = 'agents' | 'cases';
+type CaseFilter = 'all' | 'allocated' | 'unallocated';
+type AgentFilter = 'all' | 'active' | 'inactive';
+
+export const RouteDetails: React.FC<RouteDetailsProps> = ({
+  routes,
+  cases,
+  agentSettings,
+  onPriorityChange,
+  onSlotChange,
+  onAgentSettingsChange,
+  caseChanges,
+  agentChanges,
+  onRecalculate,
+  onDeleteCaseChange,
+  onDeleteAgentChange,
+  isRecalculating,
+  onUnallocatedCasesUpdate,
+}) => {
+  const [viewMode, setViewMode] = useState<ViewMode>('agents');
+  const [caseFilter, setCaseFilter] = useState<CaseFilter>('all');
+  const [agentFilter, setAgentFilter] = useState<AgentFilter>('all');
+  const [changesExpanded, setChangesExpanded] = useState(false);
+
+  // Helper function to get time in seconds for sorting
+  const getTimeInSeconds = (time: string | { seconds: number } | undefined): number => {
+    if (!time) return Infinity; // Unallocated cases go to end
+    if (typeof time === 'object' && 'seconds' in time) {
+      return time.seconds;
+    }
+    if (typeof time === 'string') {
+      const date = new Date(time);
+      return date.getTime() / 1000;
+    }
+    return Infinity;
+  };
+
+  // Get the "optimized" agent status (status at last optimization)
+  // This is the status before any pending changes
+  const getOptimizedAgentStatus = (agentIndex: number): boolean => {
+    const agentChange = agentChanges.find(change => change.agentIndex === agentIndex);
+    if (agentChange) {
+      // If there's a pending change, return the OLD status (before the change)
+      return agentChange.oldSettings.active;
+    }
+    // No pending change, so current status is the optimized status
+    return agentSettings[agentIndex].active;
+  };
+
+  // Create numbered unallocated cases
+  const unallocatedCasesWithNumbers = useMemo(() => {
+    const unallocated = cases.filter(c => c.assignedAgentIndex === null);
+    // Sort by case ID to maintain consistent ordering
+    unallocated.sort((a, b) => a.id.localeCompare(b.id));
+    
+    const numbered = unallocated.map((caseData, index) => ({
+      ...caseData,
+      unallocatedNumber: index + 1,
+    }));
+
+    console.log('📋 RouteDetails - Created unallocated cases:', numbered.length);
+    numbered.forEach(c => {
+      console.log(`  - ${c.postcode} (#${c.unallocatedNumber}) - Has location: ${!!c.location}`);
+    });
+
+    return numbered;
+  }, [cases]);
+
+  // Update parent component with unallocated cases
+  useEffect(() => {
+    if (onUnallocatedCasesUpdate) {
+      console.log('📤 RouteDetails - Sending unallocated cases to parent:', unallocatedCasesWithNumbers.length);
+      onUnallocatedCasesUpdate(unallocatedCasesWithNumbers);
+    }
+  }, [unallocatedCasesWithNumbers, onUnallocatedCasesUpdate]);
+
+  // Create a map for quick lookup of unallocated numbers
+  const unallocatedNumberMap = useMemo(() => {
+    const map = new Map<string, number>();
+    unallocatedCasesWithNumbers.forEach(c => {
+      map.set(c.id, c.unallocatedNumber);
+    });
+    return map;
+  }, [unallocatedCasesWithNumbers]);
+
+  // Filter and sort agents based on optimized status
+  const filteredAgents = useMemo(() => {
+    const agentsWithIndex = routes.map((route, index) => ({
+      route,
+      index,
+      optimizedActive: getOptimizedAgentStatus(index),
+    }));
+
+    // Filter based on selection
+    let filtered = agentsWithIndex;
+    if (agentFilter === 'active') {
+      filtered = agentsWithIndex.filter(a => a.optimizedActive);
+    } else if (agentFilter === 'inactive') {
+      filtered = agentsWithIndex.filter(a => !a.optimizedActive);
+    }
+
+    return filtered;
+  }, [routes, agentSettings, agentChanges, agentFilter]);
+
+  // Calculate agent counts based on optimized status
+  const agentCounts = useMemo(() => {
+    const active = routes.filter((_, index) => getOptimizedAgentStatus(index)).length;
+    const inactive = routes.length - active;
+    return {
+      all: routes.length,
+      active,
+      inactive,
+    };
+  }, [routes, agentSettings, agentChanges]);
+
+  // Sort and filter cases
+  const filteredAndSortedCases = useMemo(() => {
+    // First filter
+    let filtered = cases;
+    if (caseFilter === 'allocated') {
+      filtered = cases.filter(c => c.assignedAgentIndex !== null);
+    } else if (caseFilter === 'unallocated') {
+      filtered = cases.filter(c => c.assignedAgentIndex === null);
+    }
+
+    // Then sort
+    return filtered.sort((a, b) => {
+      // First sort by allocated vs unallocated
+      const aAllocated = a.assignedAgentIndex !== null;
+      const bAllocated = b.assignedAgentIndex !== null;
+
+      if (aAllocated && !bAllocated) return -1; // Allocated first
+      if (!aAllocated && bAllocated) return 1;
+
+      // Both allocated - sort by agent index and delivery time
+      if (aAllocated && bAllocated) {
+        const agentA = a.assignedAgentIndex!;
+        const agentB = b.assignedAgentIndex!;
+        if (agentA !== agentB) {
+          return agentA - agentB;
+        }
+
+        // Same agent - sort by delivery time
+        const timeA = getTimeInSeconds(a.deliveryTime);
+        const timeB = getTimeInSeconds(b.deliveryTime);
+        return timeA - timeB;
+      }
+
+      // Both unallocated - sort by unallocated number
+      const numA = unallocatedNumberMap.get(a.id) ?? Infinity;
+      const numB = unallocatedNumberMap.get(b.id) ?? Infinity;
+      return numA - numB;
+    });
+  }, [cases, caseFilter, unallocatedNumberMap]);
+
+  // Calculate case counts for filter options
+  const caseCounts = useMemo(() => {
+    const allocated = cases.filter(c => c.assignedAgentIndex !== null).length;
+    const unallocated = cases.filter(c => c.assignedAgentIndex === null).length;
+    return {
+      all: cases.length,
+      allocated,
+      unallocated,
+    };
+  }, [cases]);
+
+  // Handlers that also collapse the changes panel
+  const handleViewModeChange = (mode: ViewMode) => {
+    setViewMode(mode);
+    setChangesExpanded(false);
+  };
+
+  const handleAgentFilterChange = (filter: AgentFilter) => {
+    setAgentFilter(filter);
+    setChangesExpanded(false);
+  };
+
+  const handleCaseFilterChange = (filter: CaseFilter) => {
+    setCaseFilter(filter);
+    setChangesExpanded(false);
+  };
+
+  // Calculate total changes
+  const totalChanges = caseChanges.length + agentChanges.length;
+  const shouldShowChangesPanel = totalChanges > 0 || isRecalculating;
+
+  // Auto-collapse changes panel when all changes are deleted
+  useEffect(() => {
+    if (!shouldShowChangesPanel && changesExpanded) {
+      setChangesExpanded(false);
+    }
+  }, [shouldShowChangesPanel, changesExpanded]);
+
+  if (routes.length === 0 && cases.length === 0) return null;
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Fixed Tab Bar */}
+      <div className="shrink-0 p-4 border-b border-gray-200 bg-white">
+        {/* Tabs */}
+        <div className="flex gap-2 mb-4">
+          <button
+            onClick={() => handleViewModeChange('agents')}
+            className={`flex-1 px-4 py-2 text-sm font-semibold border-none rounded cursor-pointer transition-colors flex items-center justify-center gap-2 ${
+              viewMode === 'agents'
+                ? 'bg-blue-500 text-white'
+                : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+            }`}
+          >
+            <svg 
+              width="16" 
+              height="16" 
+              viewBox="0 0 24 24" 
+              fill="currentColor"
+            >
+              {/* Head - larger and positioned higher */}
+              <circle cx="12" cy="7" r="5.5" />
+              {/* Body - wider and extends to bottom */}
+              <path d="M2 22 Q 2 15, 6 12.5 L 18 12.5 Q 22 15, 22 22 Z" />
+            </svg>
+            <span>Agents</span>
+          </button>
+          <button
+            onClick={() => handleViewModeChange('cases')}
+            className={`flex-1 px-4 py-2 text-sm font-semibold border-none rounded cursor-pointer transition-colors flex items-center justify-center gap-2 ${
+              viewMode === 'cases'
+                ? 'bg-blue-500 text-white'
+                : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+            }`}
+          >
+            <svg 
+              width="16" 
+              height="16" 
+              viewBox="0 0 24 24" 
+              fill="none" 
+              stroke="currentColor" 
+              strokeWidth="2" 
+              strokeLinecap="round" 
+              strokeLinejoin="round"
+            >
+              <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
+              <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
+            </svg>
+            <span>Cases</span>
+          </button>
+        </div>
+
+        {/* Filter Dropdown - Show based on view mode */}
+        {viewMode === 'agents' && (
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">
+              Filter Agents
+            </label>
+            <select
+              value={agentFilter}
+              onChange={(e) => handleAgentFilterChange(e.target.value as AgentFilter)}
+              className="w-full text-sm border border-gray-300 rounded px-3 py-2 bg-white cursor-pointer"
+            >
+              <option value="all">All Agents ({agentCounts.all})</option>
+              <option value="active">Active Only ({agentCounts.active})</option>
+              <option value="inactive">Inactive Only ({agentCounts.inactive})</option>
+            </select>
+          </div>
+        )}
+
+        {viewMode === 'cases' && (
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1">
+              Filter Cases
+            </label>
+            <select
+              value={caseFilter}
+              onChange={(e) => handleCaseFilterChange(e.target.value as CaseFilter)}
+              className="w-full text-sm border border-gray-300 rounded px-3 py-2 bg-white cursor-pointer"
+            >
+              <option value="all">All Cases ({caseCounts.all})</option>
+              <option value="allocated">Allocated Only ({caseCounts.allocated})</option>
+              <option value="unallocated">Unallocated Only ({caseCounts.unallocated})</option>
+            </select>
+          </div>
+        )}
+      </div>
+
+      {/* Scrollable Content Area - Hidden when changes expanded */}
+      {!changesExpanded && (
+        <div className="flex-1 min-h-0 overflow-y-auto p-4">
+          {viewMode === 'agents' ? (
+            // Agents View
+            <div className="space-y-4">
+              {filteredAgents.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  No agents match the current filter
+                </div>
+              ) : (
+                filteredAgents.map(({ route, index }) => (
+                  <AgentCard
+                    key={`agent-${index}`}
+                    route={route}
+                    index={index}
+                    color={ROUTE_COLORS[index % ROUTE_COLORS.length]}
+                    settings={agentSettings[index]}
+                    cases={cases}
+                    onSettingsChange={onAgentSettingsChange}
+                    onPriorityChange={onPriorityChange}
+                    onSlotChange={onSlotChange}
+                  />
+                ))
+              )}
+            </div>
+          ) : (
+            // Cases View
+            <div className="space-y-4">
+              {filteredAndSortedCases.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  No cases match the current filter
+                </div>
+              ) : (
+                filteredAndSortedCases.map((caseData) => {
+                  // Find which agent this case is assigned to
+                  let agentLabel: string | null = null;
+                  let agentColor = '#9ca3af'; // Grey for unallocated
+                  let routeNumber: number | null = null;
+                  let unallocatedNumber: number | null = null;
+
+                  if (caseData.assignedAgentIndex !== null) {
+                    const route = routes[caseData.assignedAgentIndex];
+                    if (route) {
+                      agentLabel = route.vehicleLabel.replace('Vehicle', 'Agent');
+                      agentColor = ROUTE_COLORS[caseData.assignedAgentIndex % ROUTE_COLORS.length];
+
+                      // Find the visit index (position in route) for this case
+                      const visitIndex = route.visits.findIndex(visit => {
+                        // Match by shipment index which corresponds to case
+                        return visit.shipmentLabel === caseData.postcode;
+                      });
+
+                      if (visitIndex >= 0) {
+                        routeNumber = visitIndex + 1; // 1-indexed for display
+                      }
+                    }
+                  } else {
+                    // Unallocated case - get its number
+                    unallocatedNumber = unallocatedNumberMap.get(caseData.id) ?? null;
+                  }
+
+                  return (
+                    <CaseCard
+                      key={caseData.id}
+                      caseData={caseData}
+                      agentLabel={agentLabel}
+                      agentColor={agentColor}
+                      routeNumber={routeNumber}
+                      unallocatedNumber={unallocatedNumber}
+                      onPriorityChange={onPriorityChange}
+                      onSlotChange={onSlotChange}
+                    />
+                  );
+                })
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Changes Panel - Only render container if there are changes or recalculating */}
+      {shouldShowChangesPanel && (
+        <div className={changesExpanded ? "flex-1 min-h-0 bg-white" : "bg-white shrink-0"}>
+          <ChangesPanel
+            caseChanges={caseChanges}
+            agentChanges={agentChanges}
+            onRecalculate={onRecalculate}
+            onDeleteCaseChange={onDeleteCaseChange}
+            onDeleteAgentChange={onDeleteAgentChange}
+            isRecalculating={isRecalculating}
+            isExpanded={changesExpanded}
+            onToggleExpanded={setChangesExpanded}
+          />
+        </div>
+      )}
+    </div>
+  );
+};
+
+// components/RouteMap.tsx
+import React, { useState, useEffect, useRef } from 'react';
+import { GoogleMap, Marker, Polyline, InfoWindow, OverlayView } from '@react-google-maps/api';
+import type { Location, OptimizedRoute, CaseData } from '../types/route';
+import { formatTime } from '../utils/formatters';
+
+interface RouteMapProps {
+  routes: OptimizedRoute[];
+  agentLocations: Location[];
+  cases: CaseData[];
+  unallocatedCases?: Array<CaseData & { unallocatedNumber: number }>;
+  routesVersion?: number;
+}
+
+const mapContainerStyle = {
+  width: '100%',
+  height: '100%',
+};
+
+const defaultCenter = {
+  lat: 51.5074, // London
+  lng: -0.1278,
+};
+
+
+const mapStyles: google.maps.MapTypeStyle[] = [
+  {
+    featureType: 'poi.business',
+    stylers: [{ visibility: 'off' }]
+  },
+  {
+    featureType: 'poi',
+    elementType: 'labels',
+    stylers: [{ visibility: 'off' }]
+  },
+  {
+    featureType: 'transit',
+    elementType: 'labels',
+    stylers: [{ visibility: 'off' }]
+  },
+  {
+    featureType: 'road',
+    elementType: 'labels.icon',
+    stylers: [{ visibility: 'off' }]
+  },
+  {
+    featureType: 'landscape',
+    elementType: 'geometry',
+    stylers: [{ color: '#e8f4f8' }]
+  },
+  {
+    featureType: 'water',
+    elementType: 'geometry',
+    stylers: [{ color: '#b8d4e8' }]
+  },
+  {
+    featureType: 'road',
+    elementType: 'geometry',
+    stylers: [{ color: '#ffffff' }]
+  },
+  {
+    featureType: 'road.highway',
+    elementType: 'geometry',
+    stylers: [{ color: '#fff4cc' }]
+  },
+  {
+    featureType: 'poi.park',
+    elementType: 'geometry',
+    stylers: [{ color: '#c8e6c9' }]
+  },
+  {
+    featureType: 'all',
+    elementType: 'labels.text.fill',
+    stylers: [{ color: '#5f6368' }]
+  }
+];
+
+// Colors for different agent routes
+const ROUTE_COLORS = [
+  '#4285f4', // Blue
+  '#ea4335', // Red
+  '#fbbc04', // Yellow
+  '#34a853', // Green
+  '#ff6d00', // Orange
+  '#9c27b0', // Purple
+  '#00bcd4', // Cyan
+  '#e91e63', // Pink
+];
+
+// Create a custom marker icon with a person silhouette
+const createAgentMarkerIcon = (color: string): google.maps.Icon => {
+  const svg = `
+    <svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="20" cy="20" r="18" fill="${color}" stroke="white" stroke-width="2"/>
+      <g transform="translate(20, 21) scale(0.8)">
+        <path d="M-6 -8 A 6 6 0 1 1 6 -8 A 6 6 0 1 1 -6 -8 Z" fill="white"/>
+        <path d="M -10 8 Q -10 0, -6 -2 L 6 -2 Q 10 0, 10 8 Z" fill="white"/>
+      </g>
+    </svg>
+  `;
+  
+  return {
+    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+    scaledSize: new google.maps.Size(40, 40),
+    anchor: new google.maps.Point(20, 20),
+  };
+};
+
+export const RouteMap: React.FC<RouteMapProps> = ({ 
+  routes, 
+  agentLocations,
+  cases,
+  unallocatedCases = [],
+  routesVersion = 0
+}) => {
+  const [selectedMarker, setSelectedMarker] = useState<{
+    type: 'allocated' | 'unallocated';
+    routeIndex?: number;
+    visitIndex?: number;
+    caseId?: string;
+  } | null>(null);
+
+  const mapRef = useRef<google.maps.Map | null>(null);
+
+  // Fit bounds to show all markers
+  useEffect(() => {
+    if (!mapRef.current) return;
+
+    const bounds = new google.maps.LatLngBounds();
+    let hasPoints = false;
+
+    // Add agent locations
+    agentLocations.forEach(location => {
+      bounds.extend({ lat: location.latitude, lng: location.longitude });
+      hasPoints = true;
+    });
+
+    // Add all route visit locations
+    routes.forEach(route => {
+      route.visits.forEach(visit => {
+        if (visit.arrivalLocation) {
+          bounds.extend({ 
+            lat: visit.arrivalLocation.latitude, 
+            lng: visit.arrivalLocation.longitude 
+          });
+          hasPoints = true;
+        }
+      });
+    });
+
+    // Add all unallocated case locations
+    unallocatedCases.forEach(caseData => {
+      if (caseData.location) {
+        bounds.extend({ 
+          lat: caseData.location.latitude, 
+          lng: caseData.location.longitude 
+        });
+        hasPoints = true;
+      }
+    });
+
+    // Fit the map to the bounds
+    if (hasPoints) {
+      mapRef.current.fitBounds(bounds, {
+        top: 50,
+        bottom: 50,
+        left: 50,
+        right: 50,
+      });
+    }
+  }, [routes, agentLocations, unallocatedCases, routesVersion]);
+
+  const getRoutePath = (route: OptimizedRoute, agentLocation: Location) => {
+    const path = [];
+
+    if (agentLocation) {
+      path.push({
+        lat: agentLocation.latitude,
+        lng: agentLocation.longitude,
+      });
+    }
+
+    route.visits.forEach(visit => {
+      if (visit.arrivalLocation) {
+        path.push({
+          lat: visit.arrivalLocation.latitude,
+          lng: visit.arrivalLocation.longitude,
+        });
+      }
+    });
+
+    if (agentLocation) {
+      path.push({
+        lat: agentLocation.latitude,
+        lng: agentLocation.longitude,
+      });
+    }
+
+    return path;
+  };
+
+  const getPolylineKey = (route: OptimizedRoute, index: number) => {
+    const visitCount = route.visits.length;
+    const firstVisit = route.visits[0]?.shipmentLabel || '';
+    const lastVisit = route.visits[route.visits.length - 1]?.shipmentLabel || '';
+    return `route-${index}-${visitCount}-${firstVisit}-${lastVisit}-v${routesVersion}`;
+  };
+
+  // Helper to get case priority by postcode
+  const getCasePriority = (postcode: string): string => {
+    const caseData = cases.find(c => c.postcode === postcode);
+    return caseData?.priority || 'medium';
+  };
+
+  // Process unallocated markers
+  const unallocatedMarkers = unallocatedCases
+    .filter(caseData => !!caseData.location)
+    .map((caseData) => {
+      const isSelected =
+        selectedMarker?.type === 'unallocated' &&
+        selectedMarker?.caseId === caseData.id;
+
+      const isHighPriority = caseData.priority === 'high';
+
+      return (
+        <React.Fragment key={`unallocated-${caseData.id}`}>
+          <Marker
+            position={{
+              lat: caseData.location!.latitude,
+              lng: caseData.location!.longitude,
+            }}
+            label={{
+              text: String(caseData.unallocatedNumber),
+              color: '#ffffff',
+              fontSize: '12px',
+              fontWeight: 'bold',
+            }}
+            icon={{
+              path: google.maps.SymbolPath.CIRCLE,
+              scale: isHighPriority ? 13 : 10,
+              fillColor: '#6b7280',
+              fillOpacity: 0.9,
+              strokeColor: '#ffffff',
+              strokeWeight: isHighPriority ? 4 : 2,
+            }}
+            onClick={() => setSelectedMarker({ type: 'unallocated', caseId: caseData.id })}
+            zIndex={isHighPriority ? 1000 : 100}
+          />
+          {/* High priority badge overlay */}
+          {isHighPriority && (
+            <OverlayView
+              position={{
+                lat: caseData.location!.latitude,
+                lng: caseData.location!.longitude,
+              }}
+              mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
+            >
+              <div
+                style={{
+                  position: 'absolute',
+                  transform: 'translate(-50%, -50%)',
+                  pointerEvents: 'none',
+                }}
+              >
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: '-18px',
+                    right: '-18px',
+                    width: '16px',
+                    height: '16px',
+                    backgroundColor: '#dc2626',
+                    borderRadius: '50%',
+                    border: '2px solid white',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '10px',
+                    fontWeight: 'bold',
+                    color: 'white',
+                  }}
+                >
+                  !
+                </div>
+              </div>
+            </OverlayView>
+          )}
+          {isSelected && (
+            <InfoWindow
+              position={{
+                lat: caseData.location!.latitude,
+                lng: caseData.location!.longitude,
+              }}
+              onCloseClick={() => setSelectedMarker(null)}
+            >
+              <div>
+                <div>Unallocated Case</div>
+                <div>
+                  Case {caseData.unallocatedNumber}: {caseData.postcode}
+                </div>
+                <div>Priority: {caseData.priority.toUpperCase()}</div>
+              </div>
+            </InfoWindow>
+          )}
+        </React.Fragment>
+      );
+    });
+
+  return (
+    <GoogleMap
+      mapContainerStyle={mapContainerStyle}
+      center={defaultCenter}
+      zoom={11}
+      onLoad={(map) => {
+        mapRef.current = map;
+      }}
+      options={{
+        styles: mapStyles, // Apply custom styles
+        zoomControl: true,
+        streetViewControl: false,
+        mapTypeControl: false,
+        fullscreenControl: true,
+        disableDefaultUI: false,
+      }}
+    >
+      {/* Agent Start Markers */}
+      {agentLocations.map((location, index) => {
+        const color = ROUTE_COLORS[index % ROUTE_COLORS.length];
+        return (
+          <Marker
+            key={`agent-${index}`}
+            position={{
+              lat: location.latitude,
+              lng: location.longitude,
+            }}
+            icon={createAgentMarkerIcon(color)}
+            title={`Agent ${index + 1} Start`}
+            zIndex={50}
+          />
+        );
+      })}
+
+      {/* Case Location Markers for all routes */}
+      {routes.map((route, routeIndex) =>
+        route.visits.map((visit, visitIndex) => {
+          if (!visit.arrivalLocation) return null;
+
+          const color = ROUTE_COLORS[routeIndex % ROUTE_COLORS.length];
+          const isSelected =
+            selectedMarker?.type === 'allocated' &&
+            selectedMarker?.routeIndex === routeIndex &&
+            selectedMarker?.visitIndex === visitIndex;
+
+          const isHighPriority = getCasePriority(visit.shipmentLabel) === 'high';
+
+          return (
+            <React.Fragment key={`visit-${routeIndex}-${visitIndex}-${visit.shipmentLabel}`}>
+              <Marker
+                position={{
+                  lat: visit.arrivalLocation.latitude,
+                  lng: visit.arrivalLocation.longitude,
+                }}
+                label={{
+                  text: String(visitIndex + 1),
+                  color: '#ffffff',
+                  fontSize: '12px',
+                  fontWeight: 'bold',
+                }}
+                icon={{
+                  path: google.maps.SymbolPath.CIRCLE,
+                  scale: isHighPriority ? 13 : 10,
+                  fillColor: color,
+                  fillOpacity: 0.9,
+                  strokeColor: '#ffffff',
+                  strokeWeight: isHighPriority ? 4 : 2,
+                }}
+                onClick={() => setSelectedMarker({ type: 'allocated', routeIndex, visitIndex })}
+                zIndex={isHighPriority ? 1000 : 100}
+              />
+              {/* High priority badge overlay */}
+              {isHighPriority && (
+                <OverlayView
+                  position={{
+                    lat: visit.arrivalLocation.latitude,
+                    lng: visit.arrivalLocation.longitude,
+                  }}
+                  mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
+                >
+                  <div
+                    style={{
+                      position: 'absolute',
+                      transform: 'translate(-50%, -50%)',
+                      pointerEvents: 'none',
+                    }}
+                  >
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: '-18px',
+                        right: '-18px',
+                        width: '16px',
+                        height: '16px',
+                        backgroundColor: '#dc2626',
+                        borderRadius: '50%',
+                        border: '2px solid white',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '10px',
+                        fontWeight: 'bold',
+                        color: 'white',
+                      }}
+                    >
+                      !
+                    </div>
+                  </div>
+                </OverlayView>
+              )}
+              {isSelected && (
+                <InfoWindow
+                  position={{
+                    lat: visit.arrivalLocation.latitude,
+                    lng: visit.arrivalLocation.longitude,
+                  }}
+                  onCloseClick={() => setSelectedMarker(null)}
+                >
+                  <div>
+                    <div>{route.vehicleLabel}</div>
+                    <div>
+                      Case {visitIndex + 1}: {visit.shipmentLabel}
+                    </div>
+                    {formatTime(visit.startTime) && (
+                      <div>Arrival: {formatTime(visit.startTime)}</div>
+                    )}
+                  </div>
+                </InfoWindow>
+              )}
+            </React.Fragment>
+          );
+        })
+      )}
+
+      {/* Unallocated Case Markers */}
+      {unallocatedMarkers}
+
+      {/* Route Polylines for all agents */}
+      {routes.map((route, index) => {
+        if (!agentLocations[index] || route.visits.length === 0) return null;
+
+        const path = getRoutePath(route, agentLocations[index]);
+        if (path.length < 2) return null;
+
+        return (
+          <Polyline
+            key={getPolylineKey(route, index)}
+            path={path}
+            options={{
+              strokeColor: ROUTE_COLORS[index % ROUTE_COLORS.length],
+              strokeWeight: 3,
+              strokeOpacity: 0.7,
+            }}
+          />
+        );
+      })}
+    </GoogleMap>
+  );
+};
+
+// components/AgentCard.tsx
+import React, { useState, useEffect } from 'react';
+import type { OptimizedRoute, AgentSettings, CaseData, CasePriority, TimeSlot } from '../types/route';
+import { generateTimeOptions, generateLunchOptions } from '../utils/timeSlotGenerator';
+import { TimeSlotInput } from './TimeSlotInput';
+
+interface AgentCardProps {
+  route: OptimizedRoute;
+  index: number;
+  color: string;
+  settings: AgentSettings;
+  cases: CaseData[];
+  onSettingsChange: (index: number, settings: AgentSettings) => void;
+  onPriorityChange: (caseId: string, priority: CasePriority) => void;
+  onSlotChange: (caseId: string, slot: TimeSlot | undefined) => void;
+}
+
+// Create agent icon SVG as data URL
+const createAgentIcon = (color: string): string => {
+  const svg = `
+    <svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="20" cy="20" r="18" fill="${color}" stroke="white" stroke-width="2"/>
+      <g transform="translate(20, 21) scale(0.8)">
+        <path d="M-6 -8 A 6 6 0 1 1 6 -8 A 6 6 0 1 1 -6 -8 Z" fill="white"/>
+        <path d="M -10 8 Q -10 0, -6 -2 L 6 -2 Q 10 0, 10 8 Z" fill="white"/>
+      </g>
+    </svg>
+  `;
+  return 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
+};
+
+// Format duration as hours and minutes (e.g., "2h 34m")
+const formatDurationHoursMinutes = (duration: string | { seconds: number } | any): string => {
+  let seconds = 0;
+  
+  if (duration && typeof duration === 'object' && 'seconds' in duration) {
+    seconds = duration.seconds;
+  } else if (typeof duration === 'string') {
+    const match = duration.match(/(\d+)s/);
+    if (match) {
+      seconds = parseInt(match[1]);
+    }
+  }
+  
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  }
+  return `${minutes}m`;
+};
+
+// Format time without seconds
+const formatTimeWithoutSeconds = (timestamp: string | { seconds: number } | any): string => {
+  try {
+    let date: Date;
+    
+    if (timestamp && typeof timestamp === 'object' && 'seconds' in timestamp) {
+      date = new Date(timestamp.seconds * 1000);
+    } else if (typeof timestamp === 'string') {
+      date = new Date(timestamp);
+    } else {
+      return '';
+    }
+    
+    if (isNaN(date.getTime())) {
+      return '';
+    }
+    
+    return date.toLocaleTimeString('en-GB', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      hour12: false 
+    });
+  } catch (error) {
+    console.error('Error formatting time:', error);
+    return '';
+  }
+};
+
+export const AgentCard: React.FC<AgentCardProps> = ({ 
+  route, 
+  index, 
+  color, 
+  settings, 
+  cases,
+  onSettingsChange,
+  onPriorityChange,
+  onSlotChange
+}) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [expandedCaseId, setExpandedCaseId] = useState<string | null>(null);
+
+  // Extract agent name from vehicleLabel (e.g., "Agent 1 (SW1 4GO)")
+  const agentLabel = route.vehicleLabel.replace('Vehicle', 'Agent');
+  const agentName = agentLabel.split(' (')[0]; // "Agent 1"
+  const agentPostcode = agentLabel.match(/\(([^)]+)\)/)?.[1] || ''; // "SW1 4GO"
+
+  const timeOptions = generateTimeOptions(true); // Extended range: 07:00-20:00
+  const lunchOptions = generateLunchOptions(); // 0-120 mins in 15-min increments
+
+  // Reset case list when agent becomes inactive
+  useEffect(() => {
+    if (!settings.active) {
+      setIsExpanded(false);
+      setExpandedCaseId(null);
+    }
+  }, [settings.active]);
+
+  // Reset expanded case when case list is collapsed
+  useEffect(() => {
+    if (!isExpanded) {
+      setExpandedCaseId(null);
+    }
+  }, [isExpanded]);
+
+  // Helper to get case by postcode
+  const getCaseByPostcode = (postcode: string): CaseData | undefined => {
+    return cases.find(c => c.postcode === postcode);
+  };
+
+  const handleStartTimeChange = (newStartTime: string) => {
+    // Validate: start time cannot be after end time
+    if (newStartTime >= settings.endTime) {
+      return; // Invalid, ignore
+    }
+    onSettingsChange(index, {
+      ...settings,
+      startTime: newStartTime,
+    });
+  };
+
+  const handleEndTimeChange = (newEndTime: string) => {
+    // Validate: end time cannot be before start time
+    if (newEndTime <= settings.startTime) {
+      return; // Invalid, ignore
+    }
+    onSettingsChange(index, {
+      ...settings,
+      endTime: newEndTime,
+    });
+  };
+
+  const handleLunchChange = (newLunchDuration: number) => {
+    onSettingsChange(index, {
+      ...settings,
+      lunchDuration: newLunchDuration,
+    });
+  };
+
+  const handleCaseClick = (caseId: string) => {
+    setExpandedCaseId(expandedCaseId === caseId ? null : caseId);
+  };
+
+  return (
+    <div className="p-4 bg-white border border-gray-300 rounded-lg shadow-sm">
+      {/* Agent Icon and Name */}
+      <div className="flex items-center gap-3 mb-2">
+        <img 
+          src={createAgentIcon(color)} 
+          alt={agentName}
+          className="w-10 h-10"
+        />
+        <h3 className="text-base font-bold text-gray-900">{agentName}</h3>
+        
+        {/* Active/Inactive Toggle - smaller standard toggle switch style */}
+        <div className="ml-auto flex items-center gap-2">
+          <span className="text-xs font-medium text-gray-700">
+            {settings.active ? 'Active' : 'Inactive'}
+          </span>
+          <button
+            onClick={() => onSettingsChange(index, { ...settings, active: !settings.active })}
+            className={`w-9 h-5 rounded-full transition-colors relative cursor-pointer border-2 ${
+              settings.active
+                ? 'bg-blue-400 border-blue-400'
+                : 'bg-gray-300 border-gray-300'
+            }`}
+          >
+            <div
+              className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-transform ${
+                settings.active ? 'translate-x-[1.125rem]' : 'translate-x-0.5'
+              }`}
+            />
+          </button>
+        </div>
+      </div>
+
+      {/* Postcode - Only show when active */}
+      {settings.active && (
+        <div className="flex items-center gap-2 mb-3">
+          <svg 
+            width="14" 
+            height="14" 
+            viewBox="0 0 24 24" 
+            fill="none" 
+            stroke="currentColor" 
+            strokeWidth="2" 
+            strokeLinecap="round" 
+            strokeLinejoin="round"
+            className="text-gray-600"
+          >
+            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+            <circle cx="12" cy="10" r="3"></circle>
+          </svg>
+          <span className="text-sm text-gray-700">{agentPostcode}</span>
+        </div>
+      )}
+
+      {/* Agent Settings Controls - Only show when active */}
+      {settings.active && (
+        <div className="mb-3 p-3 bg-gray-50 rounded">
+          <h4 className="text-xs font-bold text-gray-700 mb-2">Work Schedule</h4>
+
+          {/* Start and End Time */}
+          <div className="grid grid-cols-2 gap-2 mb-2">
+            <div>
+              <label className="block text-[10px] font-medium text-gray-600 mb-1">
+                Start Time
+              </label>
+              <select
+                value={settings.startTime}
+                onChange={(e) => handleStartTimeChange(e.target.value)}
+                disabled={!settings.active}
+                className="w-full text-xs border border-gray-300 rounded px-2 py-1 bg-white cursor-pointer disabled:bg-gray-100 disabled:cursor-not-allowed"
+              >
+                {timeOptions.map((time) => (
+                  <option key={time} value={time} disabled={time >= settings.endTime}>
+                    {time}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] font-medium text-gray-600 mb-1">
+                End Time
+              </label>
+              <select
+                value={settings.endTime}
+                onChange={(e) => handleEndTimeChange(e.target.value)}
+                disabled={!settings.active}
+                className="w-full text-xs border border-gray-300 rounded px-2 py-1 bg-white cursor-pointer disabled:bg-gray-100 disabled:cursor-not-allowed"
+              >
+                {timeOptions.map((time) => (
+                  <option key={time} value={time} disabled={time <= settings.startTime}>
+                    {time}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Lunch Break */}
+          <div>
+            <label className="block text-[10px] font-medium text-gray-600 mb-1">
+              Lunch Break
+            </label>
+            <select
+              value={settings.lunchDuration}
+              onChange={(e) => handleLunchChange(Number(e.target.value))}
+              disabled={!settings.active}
+              className="w-full text-xs border border-gray-300 rounded px-2 py-1 bg-white cursor-pointer disabled:bg-gray-100 disabled:cursor-not-allowed"
+            >
+              {lunchOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      )}
+
+      {/* Route Details - Only show if agent is active */}
+      {settings.active && (
+        <>
+          {/* Metrics Row - Cases, Distance, Duration without icons */}
+          <div className="flex justify-between mb-3 px-1">
+            <div className="flex flex-col items-center">
+              <div className="text-[10px] font-medium text-gray-600 mb-1">Cases</div>
+              <div className="text-sm font-bold text-gray-900">{route.visits.length}</div>
+            </div>
+            <div className="flex flex-col items-center">
+              <div className="text-[10px] font-medium text-gray-600 mb-1">Distance</div>
+              <div className="text-sm font-bold text-gray-900">
+                {(route.metrics.travelDistance / 1000).toFixed(1)} km
+              </div>
+            </div>
+            <div className="flex flex-col items-center">
+              <div className="text-[10px] font-medium text-gray-600 mb-1">Duration</div>
+              <div className="text-sm font-bold text-gray-900">
+                {formatDurationHoursMinutes(route.metrics.travelDuration)}
+              </div>
+            </div>
+          </div>
+
+          {/* Expandable Case List - blue border */}
+          <button
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="px-3 py-2 text-xs font-medium w-full rounded border border-blue-400 bg-white hover:bg-blue-50 text-gray-700 transition-colors flex items-center justify-center gap-1.5"
+          >
+            <svg 
+              width="12" 
+              height="12" 
+              viewBox="0 0 12 12" 
+              fill="none" 
+              className={`transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+            >
+              <path 
+                d="M3 4.5L6 7.5L9 4.5" 
+                stroke="currentColor" 
+                strokeWidth="1.5" 
+                strokeLinecap="round" 
+                strokeLinejoin="round"
+              />
+            </svg>
+            {isExpanded ? 'Hide Cases' : `View Cases (${route.visits.length})`}
+          </button>
+
+          {isExpanded && (
+            <>
+              <div className="mt-2 space-y-1">
+                {route.visits.map((visit, i) => {
+                  const caseData = getCaseByPostcode(visit.shipmentLabel);
+                  if (!caseData) return null;
+                  
+                  const isHighPriority = caseData.priority === 'high';
+                  const formattedTime = formatTimeWithoutSeconds(visit.startTime);
+                  const status = caseData.status || 'pending';
+                  const isThisCaseExpanded = expandedCaseId === caseData.id;
+                  
+                  return (
+                    <div
+                      key={i}
+                      className={`text-xs bg-gray-50 rounded overflow-hidden ${
+                        isThisCaseExpanded ? 'border border-gray-300' : ''
+                      }`}
+                    >
+                      {/* Case Header - clickable when collapsed */}
+                      <div
+                        onClick={() => !isThisCaseExpanded && handleCaseClick(caseData.id)}
+                        className={`flex items-center justify-between p-2 ${
+                          !isThisCaseExpanded ? 'cursor-pointer hover:bg-gray-100' : ''
+                        }`}
+                      >
+                        {/* LHS: Colored circle with number */}
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <div className="relative">
+                            <div
+                              className="w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] font-bold"
+                              style={{ 
+                                backgroundColor: color,
+                                ...(isHighPriority ? {
+                                  border: '2px solid white',
+                                  outlineWidth: '1px',
+                                  outlineStyle: 'solid',
+                                  outlineColor: color,
+                                } : {})
+                              }}
+                            >
+                              {i + 1}
+                            </div>
+                            {isHighPriority && (
+                              <div className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-red-600 rounded-full border border-white flex items-center justify-center text-white text-[7px] font-bold">
+                                !
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Middle: Postcode and Time */}
+                        <div className="flex-1 ml-2">
+                          <div className="text-gray-900 font-medium">{visit.shipmentLabel}</div>
+                          {formattedTime && (
+                            <div className="text-gray-600 text-[10px]">
+                              {formattedTime} ({status})
+                            </div>
+                          )}
+                        </div>
+
+                        {/* RHS: Chevron or Close Button */}
+{isThisCaseExpanded ? (
+  <button
+    onClick={(e) => {
+      e.stopPropagation();
+      setExpandedCaseId(null);
+    }}
+    className="flex-shrink-0 flex items-center gap-1 text-gray-500 hover:text-gray-700 px-1 text-[10px] cursor-pointer"
+  >
+    <span>Close</span>
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <path d="M4 10L8 6L12 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  </button>
+) : (
+  <div className="flex-shrink-0 text-gray-400">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <path d="M4 6L8 10L12 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  </div>
+)}
+                      </div>
+
+                      {/* Expanded Content - Priority and Time Slot (no top border) */}
+                      {isThisCaseExpanded && (
+                        <div className="px-2 pb-2 pt-1">
+                          {/* Priority Dropdown */}
+                          <div className="mb-2">
+                            <label className="block text-xs font-medium text-gray-600 mb-1">
+                              Priority
+                            </label>
+                            <select
+                              value={caseData.priority}
+                              onChange={(e) =>
+                                onPriorityChange(caseData.id, e.target.value as CasePriority)
+                              }
+                              className="w-full text-xs border border-gray-300 rounded px-2 py-1 bg-white cursor-pointer"
+                            >
+                              <option value="low">Low</option>
+                              <option value="medium">Medium</option>
+                              <option value="high">High</option>
+                            </select>
+                          </div>
+
+                          {/* Time Slot Input */}
+                          <TimeSlotInput
+                            caseId={caseData.id}
+                            deliverySlot={caseData.deliverySlot}
+                            onSlotChange={onSlotChange}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </>
+      )}
+
+      {/* Inactive Message */}
+      {!settings.active && (
+        <div className="text-center py-3 text-xs text-gray-500 bg-gray-50 rounded">
+          Agent is inactive and will not be included in route optimization
+        </div>
+      )}
+    </div>
+  );
+};
+
+import React from 'react';
+import type { CaseData, CasePriority, TimeSlot } from '../types/route';
+import { formatTime } from '../utils/formatters';
+import { TimeSlotInput } from './TimeSlotInput';
+
+interface CaseCardProps {
+  caseData: CaseData;
+  agentLabel: string | null;
+  agentColor: string;
+  routeNumber: number | null;
+  unallocatedNumber: number | null;
+  onPriorityChange: (caseId: string, priority: CasePriority) => void;
+  onSlotChange: (caseId: string, slot: TimeSlot | undefined) => void;
+}
+
+const PRIORITY_COLORS = {
+  high: 'bg-red-100 text-red-800 border-red-300',
+  medium: 'bg-yellow-100 text-yellow-800 border-yellow-300',
+  low: 'bg-green-100 text-green-800 border-green-300',
+};
+
+// Format time without seconds
+const formatTimeWithoutSeconds = (timestamp: string | { seconds: number } | any): string => {
+  try {
+    let date: Date;
+    
+    if (timestamp && typeof timestamp === 'object' && 'seconds' in timestamp) {
+      date = new Date(timestamp.seconds * 1000);
+    } else if (typeof timestamp === 'string') {
+      date = new Date(timestamp);
+    } else {
+      return '';
+    }
+    
+    if (isNaN(date.getTime())) {
+      return '';
+    }
+    
+    return date.toLocaleTimeString('en-GB', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      hour12: false 
+    });
+  } catch (error) {
+    console.error('Error formatting time:', error);
+    return '';
+  }
+};
+
+export const CaseCard: React.FC<CaseCardProps> = ({
+  caseData,
+  agentLabel,
+  agentColor,
+  routeNumber,
+  unallocatedNumber,
+  onPriorityChange,
+  onSlotChange,
+}) => {
+  const isHighPriority = caseData.priority === 'high';
+
+  // Format agent label - extract just "Agent X" from "Agent X (postcode)"
+  const formattedAgentLabel = agentLabel 
+    ? agentLabel.split(' (')[0] // Remove postcode part
+    : 'Unallocated';
+
+  return (
+    <div className={`p-4 bg-white rounded-lg shadow-sm ${
+      isHighPriority ? 'border-2 border-red-500' : 'border border-gray-300'
+    }`}>
+      {/* Header Row: Postcode with Icon (LHS) and Circle + Agent Label (RHS) */}
+      <div className="flex items-center justify-between mb-3">
+        {/* Postcode with clipboard icon on LHS */}
+        <div className="flex items-center gap-2">
+          <svg 
+            width="16" 
+            height="16" 
+            viewBox="0 0 24 24" 
+            fill="none" 
+            stroke="currentColor" 
+            strokeWidth="2" 
+            strokeLinecap="round" 
+            strokeLinejoin="round"
+            className="text-gray-600"
+          >
+            <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
+            <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
+          </svg>
+          <span className="text-sm font-semibold text-gray-900">
+            {caseData.postcode}
+          </span>
+        </div>
+
+        {/* Circle + Agent Label on RHS */}
+        <div className="flex items-center gap-2">
+          {/* Route/Unallocated Number Circle */}
+          {routeNumber !== null && (
+            <div className="relative shrink-0">
+              <div
+                className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold"
+                style={{ 
+                  backgroundColor: agentColor,
+                  ...(isHighPriority ? {
+                    border: '3px solid white',
+                    outlineWidth: '2px',
+                    outlineStyle: 'solid',
+                    outlineColor: agentColor,
+                  } : {})
+                }}
+              >
+                {routeNumber}
+              </div>
+              {isHighPriority && (
+                <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-600 rounded-full border-2 border-white flex items-center justify-center text-white text-[8px] font-bold">
+                  !
+                </div>
+              )}
+            </div>
+          )}
+          {unallocatedNumber !== null && (
+            <div className="relative shrink-0">
+              <div 
+                className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold bg-gray-600"
+                style={{
+                  ...(isHighPriority ? {
+                    border: '3px solid white',
+                    outlineWidth: '2px',
+                    outlineStyle: 'solid',
+                    outlineColor: '#6b7280',
+                  } : {})
+                }}
+              >
+                {unallocatedNumber}
+              </div>
+              {isHighPriority && (
+                <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-600 rounded-full border-2 border-white flex items-center justify-center text-white text-[8px] font-bold">
+                  !
+                </div>
+              )}
+            </div>
+          )}
+          
+          {/* Agent Label - regular color */}
+          <span className="text-sm font-semibold text-gray-900">
+            {formattedAgentLabel}
+          </span>
+        </div>
+      </div>
+
+      {/* Arrival Time and Priority Row */}
+      <div className="grid grid-cols-2 gap-2 mb-3">
+        <div className="flex flex-col justify-center">
+          <label className="block text-xs font-medium text-gray-600 mb-1">
+            Arrival Time
+          </label>
+          <div className="text-xs text-gray-700">
+            {caseData.deliveryTime ? (
+              <>
+                🕐 {formatTimeWithoutSeconds(caseData.deliveryTime)} ({caseData.status === 'complete' ? 'complete' : 'pending'})
+              </>
+            ) : (
+              <span className="text-gray-400">Not scheduled</span>
+            )}
+          </div>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">
+            Priority
+          </label>
+          <select
+            value={caseData.priority}
+            onChange={(e) =>
+              onPriorityChange(caseData.id, e.target.value as CasePriority)
+            }
+            className="w-full text-xs border border-gray-300 rounded px-2 py-1 bg-white cursor-pointer"
+          >
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Time Slot - moved to bottom */}
+      <TimeSlotInput
+        caseId={caseData.id}
+        deliverySlot={caseData.deliverySlot}
+        onSlotChange={onSlotChange}
+      />
+    </div>
+  );
+};
+
+// components/RouteMap.tsx
+import React, { useState, useEffect, useRef } from 'react';
+import { GoogleMap, Marker, Polyline, InfoWindow, OverlayView } from '@react-google-maps/api';
+import type { Location, OptimizedRoute, CaseData } from '../types/route';
+import { formatTime } from '../utils/formatters';
+
+interface RouteMapProps {
+  routes: OptimizedRoute[];
+  agentLocations: Location[];
+  cases: CaseData[];
+  unallocatedCases?: Array<CaseData & { unallocatedNumber: number }>;
+  routesVersion?: number;
+}
+
+const mapContainerStyle = {
+  width: '100%',
+  height: '100%',
+};
+
+const defaultCenter = {
+  lat: 51.5074, // London
+  lng: -0.1278,
+};
+
+// Custom map style - dark and clean
+/*
+const mapStyles: google.maps.MapTypeStyle[] = [
+  {
+    featureType: 'all',
+    elementType: 'labels.text.fill',
+    stylers: [{ color: '#7c7c7c' }]
+  },
+  {
+    featureType: 'all',
+    elementType: 'labels.text.stroke',
+    stylers: [{ visibility: 'off' }]
+  },
+  {
+    featureType: 'administrative',
+    elementType: 'geometry',
+    stylers: [{ visibility: 'off' }]
+  },
+  {
+    featureType: 'administrative.land_parcel',
+    stylers: [{ visibility: 'off' }]
+  },
+  {
+    featureType: 'administrative.neighborhood',
+    stylers: [{ visibility: 'off' }]
+  },
+  {
+    featureType: 'landscape',
+    elementType: 'geometry',
+    stylers: [{ color: '#e8e8e8' }]
+  },
+  {
+    featureType: 'poi',
+    stylers: [{ visibility: 'off' }] // Hide all POI
+  },
+  {
+    featureType: 'road',
+    elementType: 'geometry',
+    stylers: [{ color: '#ffffff' }]
+  },
+  {
+    featureType: 'road',
+    elementType: 'labels.icon',
+    stylers: [{ visibility: 'off' }]
+  },
+  {
+    featureType: 'road.arterial',
+    elementType: 'geometry',
+    stylers: [{ color: '#fefefe' }]
+  },
+  {
+    featureType: 'road.highway',
+    elementType: 'geometry',
+    stylers: [{ color: '#ffffff' }]
+  },
+  {
+    featureType: 'road.highway',
+    elementType: 'geometry.stroke',
+    stylers: [{ color: '#d6d6d6' }]
+  },
+  {
+    featureType: 'road.local',
+    elementType: 'geometry',
+    stylers: [{ color: '#ffffff' }]
+  },
+  {
+    featureType: 'transit',
+    stylers: [{ visibility: 'off' }]
+  },
+  {
+    featureType: 'water',
+    elementType: 'geometry',
+    stylers: [{ color: '#c9d6de' }]
+  }
+];
+
+
+const mapStyles: google.maps.MapTypeStyle[] = [
+  {
+    featureType: 'poi',
+    elementType: 'labels',
+    stylers: [{ visibility: 'off' }] // Hide POI labels but keep parks/landmarks visible
+  },
+  {
+    featureType: 'poi.business',
+    stylers: [{ visibility: 'off' }]
+  },
+  {
+    featureType: 'transit',
+    elementType: 'labels',
+    stylers: [{ visibility: 'off' }]
+  },
+  {
+    featureType: 'road',
+    elementType: 'labels.icon',
+    stylers: [{ visibility: 'off' }]
+  },
+  {
+    featureType: 'landscape',
+    elementType: 'geometry',
+    stylers: [{ color: '#f0f0f0' }]
+  },
+  {
+    featureType: 'water',
+    elementType: 'geometry',
+    stylers: [{ color: '#b3d1ff' }]
+  },
+  {
+    featureType: 'road',
+    elementType: 'geometry',
+    stylers: [{ color: '#ffffff' }]
+  },
+  {
+    featureType: 'road.highway',
+    elementType: 'geometry',
+    stylers: [{ color: '#ffeb99' }]
+  },
+  {
+    featureType: 'poi.park',
+    elementType: 'geometry',
+    stylers: [{ color: '#d4e7d4' }]
+  }
+];
+
+const mapStyles: google.maps.MapTypeStyle[] = [
+  {
+    featureType: 'poi.business',
+    stylers: [{ visibility: 'off' }]
+  },
+  {
+    featureType: 'poi',
+    elementType: 'labels',
+    stylers: [{ visibility: 'off' }]
+  },
+  {
+    featureType: 'transit',
+    elementType: 'labels',
+    stylers: [{ visibility: 'off' }]
+  },
+  {
+    featureType: 'road',
+    elementType: 'labels.icon',
+    stylers: [{ visibility: 'off' }]
+  },
+  {
+    featureType: 'landscape',
+    elementType: 'geometry',
+    stylers: [{ color: '#f5f1e8' }]
+  },
+  {
+    featureType: 'water',
+    elementType: 'geometry',
+    stylers: [{ color: '#a8d8ea' }]
+  },
+  {
+    featureType: 'road',
+    elementType: 'geometry',
+    stylers: [{ color: '#ffffff' }]
+  },
+  {
+    featureType: 'road.highway',
+    elementType: 'geometry',
+    stylers: [{ color: '#ffe4b5' }]
+  },
+  {
+    featureType: 'poi.park',
+    elementType: 'geometry',
+    stylers: [{ color: '#d4e5d4' }]
+  },
+  {
+    featureType: 'all',
+    elementType: 'labels.text.fill',
+    stylers: [{ color: '#6b6b6b' }]
+  },
+  {
+    featureType: 'all',
+    elementType: 'labels.text.stroke',
+    stylers: [{ color: '#ffffff' }, { weight: 3 }]
+  }
+];
+*/
+
+
+
+const mapStyles: google.maps.MapTypeStyle[] = [
+  {
+    featureType: 'poi.business',
+    stylers: [{ visibility: 'off' }]
+  },
+  {
+    featureType: 'poi',
+    elementType: 'labels',
+    stylers: [{ visibility: 'off' }]
+  },
+  {
+    featureType: 'transit',
+    elementType: 'labels',
+    stylers: [{ visibility: 'off' }]
+  },
+  {
+    featureType: 'road',
+    elementType: 'labels.icon',
+    stylers: [{ visibility: 'off' }]
+  },
+  {
+    featureType: 'landscape',
+    elementType: 'geometry',
+    stylers: [{ color: '#e8f4f8' }]
+  },
+  {
+    featureType: 'water',
+    elementType: 'geometry',
+    stylers: [{ color: '#b8d4e8' }]
+  },
+  {
+    featureType: 'road',
+    elementType: 'geometry',
+    stylers: [{ color: '#ffffff' }]
+  },
+  {
+    featureType: 'road.highway',
+    elementType: 'geometry',
+    stylers: [{ color: '#fff4cc' }]
+  },
+  {
+    featureType: 'poi.park',
+    elementType: 'geometry',
+    stylers: [{ color: '#c8e6c9' }]
+  },
+  {
+    featureType: 'all',
+    elementType: 'labels.text.fill',
+    stylers: [{ color: '#5f6368' }]
+  }
+];
+
+// Colors for different agent routes
+const ROUTE_COLORS = [
+  '#4285f4', // Blue
+  '#ea4335', // Red
+  '#fbbc04', // Yellow
+  '#34a853', // Green
+  '#ff6d00', // Orange
+  '#9c27b0', // Purple
+  '#00bcd4', // Cyan
+  '#e91e63', // Pink
+];
+
+// Create a custom marker icon with a person silhouette
+const createAgentMarkerIcon = (color: string): google.maps.Icon => {
+  const svg = `
+    <svg width="40" height="40" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="20" cy="20" r="18" fill="${color}" stroke="white" stroke-width="2"/>
+      <g transform="translate(20, 21) scale(0.8)">
+        <path d="M-6 -8 A 6 6 0 1 1 6 -8 A 6 6 0 1 1 -6 -8 Z" fill="white"/>
+        <path d="M -10 8 Q -10 0, -6 -2 L 6 -2 Q 10 0, 10 8 Z" fill="white"/>
+      </g>
+    </svg>
+  `;
+  
+  return {
+    url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+    scaledSize: new google.maps.Size(40, 40),
+    anchor: new google.maps.Point(20, 20),
+  };
+};
+
+export const RouteMap: React.FC<RouteMapProps> = ({ 
+  routes, 
+  agentLocations,
+  cases,
+  unallocatedCases = [],
+  routesVersion = 0
+}) => {
+  const [selectedMarker, setSelectedMarker] = useState<{
+    type: 'allocated' | 'unallocated';
+    routeIndex?: number;
+    visitIndex?: number;
+    caseId?: string;
+  } | null>(null);
+
+  const mapRef = useRef<google.maps.Map | null>(null);
+
+  // Fit bounds to show all markers
+  useEffect(() => {
+    if (!mapRef.current) return;
+
+    const bounds = new google.maps.LatLngBounds();
+    let hasPoints = false;
+
+    // Add agent locations
+    agentLocations.forEach(location => {
+      bounds.extend({ lat: location.latitude, lng: location.longitude });
+      hasPoints = true;
+    });
+
+    // Add all route visit locations
+    routes.forEach(route => {
+      route.visits.forEach(visit => {
+        if (visit.arrivalLocation) {
+          bounds.extend({ 
+            lat: visit.arrivalLocation.latitude, 
+            lng: visit.arrivalLocation.longitude 
+          });
+          hasPoints = true;
+        }
+      });
+    });
+
+    // Add all unallocated case locations
+    unallocatedCases.forEach(caseData => {
+      if (caseData.location) {
+        bounds.extend({ 
+          lat: caseData.location.latitude, 
+          lng: caseData.location.longitude 
+        });
+        hasPoints = true;
+      }
+    });
+
+    // Fit the map to the bounds
+    if (hasPoints) {
+      mapRef.current.fitBounds(bounds, {
+        top: 50,
+        bottom: 50,
+        left: 50,
+        right: 50,
+      });
+    }
+  }, [routes, agentLocations, unallocatedCases, routesVersion]);
+
+  const getRoutePath = (route: OptimizedRoute, agentLocation: Location) => {
+    const path = [];
+
+    if (agentLocation) {
+      path.push({
+        lat: agentLocation.latitude,
+        lng: agentLocation.longitude,
+      });
+    }
+
+    route.visits.forEach(visit => {
+      if (visit.arrivalLocation) {
+        path.push({
+          lat: visit.arrivalLocation.latitude,
+          lng: visit.arrivalLocation.longitude,
+        });
+      }
+    });
+
+    if (agentLocation) {
+      path.push({
+        lat: agentLocation.latitude,
+        lng: agentLocation.longitude,
+      });
+    }
+
+    return path;
+  };
+
+  const getPolylineKey = (route: OptimizedRoute, index: number) => {
+    const visitCount = route.visits.length;
+    const firstVisit = route.visits[0]?.shipmentLabel || '';
+    const lastVisit = route.visits[route.visits.length - 1]?.shipmentLabel || '';
+    return `route-${index}-${visitCount}-${firstVisit}-${lastVisit}-v${routesVersion}`;
+  };
+
+  // Helper to get case priority by postcode
+  const getCasePriority = (postcode: string): string => {
+    const caseData = cases.find(c => c.postcode === postcode);
+    return caseData?.priority || 'medium';
+  };
+
+  // Process unallocated markers
+  const unallocatedMarkers = unallocatedCases
+    .filter(caseData => !!caseData.location)
+    .map((caseData) => {
+      const isSelected =
+        selectedMarker?.type === 'unallocated' &&
+        selectedMarker?.caseId === caseData.id;
+
+      const isHighPriority = caseData.priority === 'high';
+
+      return (
+        <React.Fragment key={`unallocated-${caseData.id}`}>
+          <Marker
+            position={{
+              lat: caseData.location!.latitude,
+              lng: caseData.location!.longitude,
+            }}
+            label={{
+              text: String(caseData.unallocatedNumber),
+              color: '#ffffff',
+              fontSize: '12px',
+              fontWeight: 'bold',
+            }}
+            icon={{
+              path: google.maps.SymbolPath.CIRCLE,
+              scale: isHighPriority ? 13 : 10,
+              fillColor: '#6b7280',
+              fillOpacity: 0.9,
+              strokeColor: '#ffffff',
+              strokeWeight: isHighPriority ? 4 : 2,
+            }}
+            onClick={() => setSelectedMarker({ type: 'unallocated', caseId: caseData.id })}
+            zIndex={isHighPriority ? 1000 : 100}
+          />
+          {/* High priority badge overlay */}
+          {isHighPriority && (
+            <OverlayView
+              position={{
+                lat: caseData.location!.latitude,
+                lng: caseData.location!.longitude,
+              }}
+              mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
+            >
+              <div
+                style={{
+                  position: 'absolute',
+                  transform: 'translate(-50%, -50%)',
+                  pointerEvents: 'none',
+                }}
+              >
+                <div
+                  style={{
+                    position: 'absolute',
+                    top: '-18px',
+                    right: '-18px',
+                    width: '16px',
+                    height: '16px',
+                    backgroundColor: '#dc2626',
+                    borderRadius: '50%',
+                    border: '2px solid white',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '10px',
+                    fontWeight: 'bold',
+                    color: 'white',
+                  }}
+                >
+                  !
+                </div>
+              </div>
+            </OverlayView>
+          )}
+          {isSelected && (
+            <InfoWindow
+              position={{
+                lat: caseData.location!.latitude,
+                lng: caseData.location!.longitude,
+              }}
+              onCloseClick={() => setSelectedMarker(null)}
+            >
+              <div>
+                <div>Unallocated Case</div>
+                <div>
+                  Case {caseData.unallocatedNumber}: {caseData.postcode}
+                </div>
+                <div>Priority: {caseData.priority.toUpperCase()}</div>
+              </div>
+            </InfoWindow>
+          )}
+        </React.Fragment>
+      );
+    });
+
+  return (
+    <GoogleMap
+      mapContainerStyle={mapContainerStyle}
+      center={defaultCenter}
+      zoom={11}
+      onLoad={(map) => {
+        mapRef.current = map;
+      }}
+      options={{
+        styles: mapStyles, // Apply custom styles
+        zoomControl: true,
+        streetViewControl: false,
+        mapTypeControl: false,
+        fullscreenControl: true,
+        disableDefaultUI: false,
+      }}
+    >
+      {/* Agent Start Markers */}
+      {agentLocations.map((location, index) => {
+        const color = ROUTE_COLORS[index % ROUTE_COLORS.length];
+        return (
+          <Marker
+            key={`agent-${index}`}
+            position={{
+              lat: location.latitude,
+              lng: location.longitude,
+            }}
+            icon={createAgentMarkerIcon(color)}
+            title={`Agent ${index + 1} Start`}
+            zIndex={50}
+          />
+        );
+      })}
+
+      {/* Case Location Markers for all routes */}
+      {routes.map((route, routeIndex) =>
+        route.visits.map((visit, visitIndex) => {
+          if (!visit.arrivalLocation) return null;
+
+          const color = ROUTE_COLORS[routeIndex % ROUTE_COLORS.length];
+          const isSelected =
+            selectedMarker?.type === 'allocated' &&
+            selectedMarker?.routeIndex === routeIndex &&
+            selectedMarker?.visitIndex === visitIndex;
+
+          const isHighPriority = getCasePriority(visit.shipmentLabel) === 'high';
+
+          return (
+            <React.Fragment key={`visit-${routeIndex}-${visitIndex}-${visit.shipmentLabel}`}>
+              <Marker
+                position={{
+                  lat: visit.arrivalLocation.latitude,
+                  lng: visit.arrivalLocation.longitude,
+                }}
+                label={{
+                  text: String(visitIndex + 1),
+                  color: '#ffffff',
+                  fontSize: '12px',
+                  fontWeight: 'bold',
+                }}
+                icon={{
+                  path: google.maps.SymbolPath.CIRCLE,
+                  scale: isHighPriority ? 13 : 10,
+                  fillColor: color,
+                  fillOpacity: 0.9,
+                  strokeColor: '#ffffff',
+                  strokeWeight: isHighPriority ? 4 : 2,
+                }}
+                onClick={() => setSelectedMarker({ type: 'allocated', routeIndex, visitIndex })}
+                zIndex={isHighPriority ? 1000 : 100}
+              />
+              {/* High priority badge overlay */}
+              {isHighPriority && (
+                <OverlayView
+                  position={{
+                    lat: visit.arrivalLocation.latitude,
+                    lng: visit.arrivalLocation.longitude,
+                  }}
+                  mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
+                >
+                  <div
+                    style={{
+                      position: 'absolute',
+                      transform: 'translate(-50%, -50%)',
+                      pointerEvents: 'none',
+                    }}
+                  >
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: '-18px',
+                        right: '-18px',
+                        width: '16px',
+                        height: '16px',
+                        backgroundColor: '#dc2626',
+                        borderRadius: '50%',
+                        border: '2px solid white',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: '10px',
+                        fontWeight: 'bold',
+                        color: 'white',
+                      }}
+                    >
+                      !
+                    </div>
+                  </div>
+                </OverlayView>
+              )}
+              {isSelected && (
+                <InfoWindow
+                  position={{
+                    lat: visit.arrivalLocation.latitude,
+                    lng: visit.arrivalLocation.longitude,
+                  }}
+                  onCloseClick={() => setSelectedMarker(null)}
+                >
+                  <div>
+                    <div>{route.vehicleLabel}</div>
+                    <div>
+                      Case {visitIndex + 1}: {visit.shipmentLabel}
+                    </div>
+                    {formatTime(visit.startTime) && (
+                      <div>Arrival: {formatTime(visit.startTime)}</div>
+                    )}
+                  </div>
+                </InfoWindow>
+              )}
+            </React.Fragment>
+          );
+        })
+      )}
+
+      {/* Unallocated Case Markers */}
+      {unallocatedMarkers}
+
+      {/* Route Polylines for all agents */}
+      {routes.map((route, index) => {
+        if (!agentLocations[index] || route.visits.length === 0) return null;
+
+        const path = getRoutePath(route, agentLocations[index]);
+        if (path.length < 2) return null;
+
+        return (
+          <Polyline
+            key={getPolylineKey(route, index)}
+            path={path}
+            options={{
+              strokeColor: ROUTE_COLORS[index % ROUTE_COLORS.length],
+              strokeWeight: 3,
+              strokeOpacity: 0.7,
+            }}
+          />
+        );
+      })}
+    </GoogleMap>
+  );
+};
+
+import React, { useState } from 'react';
+import type { TimeSlot } from '../types/route';
+import { generateTimeOptions } from '../utils/timeSlotGenerator';
+
+interface TimeSlotInputProps {
+  caseId: string;
+  deliverySlot?: TimeSlot;
+  onSlotChange: (caseId: string, slot: TimeSlot | undefined) => void;
+}
+
+export const TimeSlotInput: React.FC<TimeSlotInputProps> = ({
+  caseId,
+  deliverySlot,
+  onSlotChange,
+}) => {
+  const [showInput, setShowInput] = useState(!!deliverySlot);
+  const timeOptions = generateTimeOptions();
+
+  const handleAddSlot = () => {
+    setShowInput(true);
+    // Set default slot to 9am-5pm
+    onSlotChange(caseId, {
+      startTime: '09:00',
+      endTime: '17:00',
+    });
+  };
+
+  const handleRemoveSlot = () => {
+    setShowInput(false);
+    onSlotChange(caseId, undefined);
+  };
+
+  const handleStartTimeChange = (newStartTime: string) => {
+    if (deliverySlot) {
+      onSlotChange(caseId, {
+        ...deliverySlot,
+        startTime: newStartTime,
+      });
+    }
+  };
+
+  const handleEndTimeChange = (newEndTime: string) => {
+    if (deliverySlot) {
+      onSlotChange(caseId, {
+        ...deliverySlot,
+        endTime: newEndTime,
+      });
+    }
+  };
+
+  if (!showInput) {
+    return (
+      <div className="mb-2">
+        <label className="block text-xs font-medium text-gray-600 mb-1">
+          Time Slot
+        </label>
+        <button
+          onClick={handleAddSlot}
+          className="text-xs text-blue-600 hover:text-blue-700 font-medium cursor-pointer"
+        >
+          + Add Slot
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mb-2">
+      <div className="flex items-center justify-between mb-1">
+        <label className="block text-xs font-medium text-gray-600">
+          Time Slot
+        </label>
+<button
+  onClick={handleRemoveSlot}
+  className="flex items-center gap-1 text-[10px] text-gray-500 hover:text-gray-700 cursor-pointer"
+>
+  <span>Remove</span>
+  <svg 
+    width="12" 
+    height="12" 
+    viewBox="0 0 24 24" 
+    fill="none" 
+    stroke="currentColor" 
+    strokeWidth="2" 
+    strokeLinecap="round" 
+    strokeLinejoin="round"
+  >
+    <path d="M3 6h18"></path>
+    <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+    <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+  </svg>
+</button>
+      </div>
+      <div className="flex items-center gap-2">
+        <select
+          value={deliverySlot?.startTime}
+          onChange={(e) => handleStartTimeChange(e.target.value)}
+          className="flex-1 text-xs border border-gray-300 rounded px-2 py-1 bg-white cursor-pointer"
+        >
+          {timeOptions.map((time) => (
+            <option key={time} value={time}>
+              {time}
+            </option>
+          ))}
+        </select>
+        <div className="w-8 text-center text-xs text-gray-500">-</div>
+        <select
+          value={deliverySlot?.endTime}
+          onChange={(e) => handleEndTimeChange(e.target.value)}
+          className="flex-1 text-xs border border-gray-300 rounded px-2 py-1 bg-white cursor-pointer"
+        >
+          {timeOptions.map((time) => (
+            <option key={time} value={time}>
+              {time}
+            </option>
+          ))}
+        </select>
+      </div>
+    </div>
+  );
+};
+
+// components/ChangesPanel.tsx
+
+import React, { useEffect } from 'react';
+import type { CaseChange, PriorityChange, TimeSlotChange, AgentChange } from '../types/route';
+
+interface ChangesPanelProps {
+  caseChanges: CaseChange[];
+  agentChanges: AgentChange[];
+  onRecalculate: () => void;
+  onDeleteCaseChange: (caseId: string, changeType: 'priority' | 'slot') => void;
+  onDeleteAgentChange: (agentIndex: number) => void;
+  isRecalculating: boolean;
+  isExpanded: boolean;
+  onToggleExpanded: (expanded: boolean) => void;
+}
+
+// Colors for different agents (same as RouteMap and RouteDetails)
+const ROUTE_COLORS = [
+  '#4285f4', // Blue
+  '#ea4335', // Red
+  '#fbbc04', // Yellow
+  '#34a853', // Green
+  '#ff6d00', // Orange
+  '#9c27b0', // Purple
+  '#00bcd4', // Cyan
+  '#e91e63', // Pink
+];
+
+// Create agent icon SVG as data URL
+const createAgentIcon = (color: string): string => {
+  const svg = `
+    <svg width="28" height="28" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="20" cy="20" r="18" fill="${color}" stroke="white" stroke-width="2"/>
+      <g transform="translate(20, 21) scale(0.8)">
+        <path d="M-6 -8 A 6 6 0 1 1 6 -8 A 6 6 0 1 1 -6 -8 Z" fill="white"/>
+        <path d="M -10 8 Q -10 0, -6 -2 L 6 -2 Q 10 0, 10 8 Z" fill="white"/>
+      </g>
+    </svg>
+  `;
+  return 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
+};
+
+const PRIORITY_LABELS = {
+  high: 'HIGH',
+  medium: 'MEDIUM',
+  low: 'LOW',
+};
+
+export const ChangesPanel: React.FC<ChangesPanelProps> = ({ 
+  caseChanges,
+  agentChanges,
+  onRecalculate,
+  onDeleteCaseChange,
+  onDeleteAgentChange,
+  isRecalculating,
+  isExpanded,
+  onToggleExpanded
+}) => {
+  const totalChanges = caseChanges.length + agentChanges.length;
+
+  // Auto-collapse when recalculation starts
+  useEffect(() => {
+    if (isRecalculating) {
+      onToggleExpanded(false);
+    }
+  }, [isRecalculating, onToggleExpanded]);
+
+  // Show panel if there are changes OR if recalculating
+  if (totalChanges === 0 && !isRecalculating) return null;
+
+  return (
+    <div className={`border border-x-0 border-b-0 ${isExpanded ? 'border-t-0' : ''} border-gray-300 bg-white shrink-0 rounded-t-xl flex flex-col ${isExpanded ? 'h-full' : ''}`}>
+      {/* Changes Summary Row */}
+      <div className="px-3 py-3 flex justify-between items-center border-b border-gray-200 shrink-0">
+        <span className="text-sm font-medium text-gray-700">
+          {isRecalculating && totalChanges === 0 
+            ? 'Recalculating...' 
+            : `${totalChanges} pending change${totalChanges !== 1 ? 's' : ''}`
+          }
+        </span>
+        {totalChanges > 0 && (
+          <button
+            onClick={() => onToggleExpanded(!isExpanded)}
+            disabled={isRecalculating}
+            className={`px-3 py-1 text-xs font-medium rounded cursor-pointer ${
+              isRecalculating 
+                ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-300'
+                : isExpanded
+                  ? 'bg-transparent text-gray-500 border border-blue-500 hover:bg-gray-50'
+                  : 'bg-blue-500 text-white border-none hover:bg-blue-600'
+            }`}
+          >
+            {isExpanded ? 'Hide Changes' : 'View Changes'}
+          </button>
+        )}
+      </div>
+
+      {/* Expandable Changes List - Scrollable */}
+      {isExpanded && totalChanges > 0 && (
+        <div 
+          className="flex-1 overflow-y-auto border-b border-gray-200 min-h-0"
+          style={{ marginTop: '2px' }} // 2px gap from the summary row
+        >
+          <div className="p-3">
+            {/* Agent Changes */}
+            {agentChanges.map((change, index) => {
+              const agentColor = ROUTE_COLORS[change.agentIndex % ROUTE_COLORS.length];
+              const agentName = change.agentLabel.split(' (')[0]; // Remove postcode part
+              
+              return (
+                <div 
+                  key={`agent-${index}`}
+                  className="mb-2 last:mb-0 p-2 bg-blue-50 rounded text-xs border border-blue-200 flex justify-between items-start gap-2"
+                >
+                  <div className="flex-1">
+                    {/* Agent icon and name */}
+                    <div className="flex items-center gap-2 mb-2">
+                      <img 
+                        src={createAgentIcon(agentColor)} 
+                        alt={agentName}
+                        className="w-7 h-7"
+                      />
+                      <div className="font-semibold text-gray-800">
+                        {agentName}
+                      </div>
+                    </div>
+                    
+                    <div>
+                      {/* Show active/inactive change if it changed */}
+                      {change.oldSettings.active !== change.newSettings.active && (
+                        <>
+                          <div className="text-[10px] text-gray-500 mb-0.5">Status</div>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-medium text-gray-800">
+                              {change.oldSettings.active ? 'Active' : 'Inactive'}
+                            </span>
+                            <span className="text-gray-400">→</span>
+                            <span className="font-medium text-gray-800">
+                              {change.newSettings.active ? 'Active' : 'Inactive'}
+                            </span>
+                          </div>
+                        </>
+                      )}
+
+                      {/* Show work hours change if it changed */}
+                      {(change.oldSettings.startTime !== change.newSettings.startTime || 
+                        change.oldSettings.endTime !== change.newSettings.endTime) && (
+                        <>
+                          <div className="text-[10px] text-gray-500 mb-0.5">Work Hours</div>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-medium text-gray-800">
+                              {change.oldSettings.startTime}-{change.oldSettings.endTime}
+                            </span>
+                            <span className="text-gray-400">→</span>
+                            <span className="font-medium text-gray-800">
+                              {change.newSettings.startTime}-{change.newSettings.endTime}
+                            </span>
+                          </div>
+                        </>
+                      )}
+
+                      {/* Show lunch break change if it changed */}
+                      {change.oldSettings.lunchDuration !== change.newSettings.lunchDuration && (
+                        <>
+                          <div className="text-[10px] text-gray-500 mb-0.5">Lunch Break</div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-gray-800">
+                              {change.oldSettings.lunchDuration} min
+                            </span>
+                            <span className="text-gray-400">→</span>
+                            <span className="font-medium text-gray-800">
+                              {change.newSettings.lunchDuration} min
+                            </span>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                    
+                    <div className="text-gray-500 text-[10px] mt-1">
+                      {change.timestamp.toLocaleTimeString()}
+                    </div>
+                  </div>
+                  
+                  {/* Delete Button */}
+                  <button
+                    onClick={() => onDeleteAgentChange(change.agentIndex)}
+                    disabled={isRecalculating}
+                    className={`shrink-0 flex items-center gap-1 text-[10px] rounded border-none transition-colors p-1.5 ${
+                      isRecalculating
+                        ? 'text-gray-300 cursor-not-allowed bg-transparent'
+                        : 'text-gray-500 hover:text-gray-700 cursor-pointer bg-transparent'
+                    }`}
+                    title={isRecalculating ? 'Cannot delete while recalculating' : 'Restore original settings'}
+                  >
+                    <span>Delete</span>
+                    <svg 
+                      width="12" 
+                      height="12" 
+                      viewBox="0 0 24 24" 
+                      fill="none" 
+                      stroke="currentColor" 
+                      strokeWidth="2" 
+                      strokeLinecap="round" 
+                      strokeLinejoin="round"
+                    >
+                      <path d="M3 6h18"></path>
+                      <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                      <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+                    </svg>
+                  </button>
+                </div>
+              );
+            })}
+
+            {/* Case Changes */}
+            {caseChanges.map((change, index) => {
+              // Type guard for PriorityChange
+              const isPriorityChange = 'oldPriority' in change;
+              
+              return (
+                <div 
+                  key={`case-${index}`}
+                  className="mb-2 last:mb-0 p-2 bg-gray-50 rounded text-xs border border-gray-200 flex justify-between items-start gap-2"
+                >
+                  <div className="flex-1">
+                    {/* Postcode with clipboard icon */}
+                    <div className="flex items-center gap-2 mb-1">
+                      <svg 
+                        width="14" 
+                        height="14" 
+                        viewBox="0 0 24 24" 
+                        fill="none" 
+                        stroke="currentColor" 
+                        strokeWidth="2" 
+                        strokeLinecap="round" 
+                        strokeLinejoin="round"
+                        className="text-gray-600"
+                      >
+                        <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
+                        <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
+                      </svg>
+                      <div className="font-semibold text-gray-800">
+                        {change.casePostcode}
+                      </div>
+                    </div>
+                    
+                    {isPriorityChange ? (
+                      // Priority Change Display
+                      <div>
+                        <div className="text-[10px] text-gray-500 mb-0.5">Priority</div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-gray-800">
+                            {PRIORITY_LABELS[(change as PriorityChange).oldPriority]}
+                          </span>
+                          <span className="text-gray-400">→</span>
+                          <span className="font-medium text-gray-800">
+                            {PRIORITY_LABELS[(change as PriorityChange).newPriority]}
+                          </span>
+                        </div>
+                      </div>
+                    ) : (
+                      // Time Slot Change Display
+                      <div>
+                        <div className="text-[10px] text-gray-500 mb-0.5">Delivery Slot</div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-gray-800">
+                            {(change as TimeSlotChange).oldSlot 
+                              ? `${(change as TimeSlotChange).oldSlot!.startTime}-${(change as TimeSlotChange).oldSlot!.endTime}`
+                              : 'None'
+                            }
+                          </span>
+                          <span className="text-gray-400">→</span>
+                          <span className="font-medium text-gray-800">
+                            {(change as TimeSlotChange).newSlot 
+                              ? `${(change as TimeSlotChange).newSlot!.startTime}-${(change as TimeSlotChange).newSlot!.endTime}`
+                              : 'None'
+                            }
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                    
+                    <div className="text-gray-500 text-[10px] mt-1">
+                      {change.timestamp.toLocaleTimeString()}
+                    </div>
+                  </div>
+                  
+                  {/* Delete Button */}
+                  <button
+                    onClick={() => onDeleteCaseChange(change.caseId, isPriorityChange ? 'priority' : 'slot')}
+                    disabled={isRecalculating}
+                    className={`shrink-0 flex items-center gap-1 text-[10px] rounded border-none transition-colors p-1.5 ${
+                      isRecalculating
+                        ? 'text-gray-300 cursor-not-allowed bg-transparent'
+                        : 'text-gray-500 hover:text-gray-700 cursor-pointer bg-transparent'
+                    }`}
+                    title={isRecalculating ? 'Cannot delete while recalculating' : 'Restore original value'}
+                  >
+                    <span>Delete</span>
+                    <svg 
+                      width="12" 
+                      height="12" 
+                      viewBox="0 0 24 24" 
+                      fill="none" 
+                      stroke="currentColor" 
+                      strokeWidth="2" 
+                      strokeLinecap="round" 
+                      strokeLinejoin="round"
+                    >
+                      <path d="M3 6h18"></path>
+                      <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                      <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+                    </svg>
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Recalculate Button - Always visible at bottom */}
+      <div className="p-3 shrink-0">
+        <button
+          onClick={onRecalculate}
+          disabled={isRecalculating}
+          className={`w-full px-4 py-3 text-base font-semibold border-none rounded cursor-pointer ${
+            isRecalculating
+              ? 'bg-gray-400 text-white cursor-not-allowed'
+              : 'bg-emerald-500 text-white hover:bg-emerald-600'
+          }`}
+        >
+          {isRecalculating ? '◐ Recalculating Routes...' : '↻ Recalculate Routes'}
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// FRONTEND - utils
+
+import type { CasePriority } from '../types/route';
+
+/**
+ * Generate a random priority with distribution:
+ * - 1/7 high priority
+ * - 1/7 low priority  
+ * - 5/7 medium priority
+ */
+export const generateCasePriority = (): CasePriority => {
+  const random = Math.random();
+  
+  if (random < 1/7) {
+    return 'high';
+  } else if (random < 2/7) {
+    return 'low';
+  } else {
+    return 'medium';
+  }
+};
+
+export const formatDuration = (duration: string | { seconds: number } | any): string => {
+  if (duration && typeof duration === 'object' && 'seconds' in duration) {
+    const seconds = duration.seconds;
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    if (minutes > 0) {
+      return `${minutes}m ${remainingSeconds}s`;
+    }
+    return `${seconds}s`;
+  }
+  
+  if (typeof duration === 'string') {
+    const match = duration.match(/(\d+)s/);
+    if (match) {
+      const seconds = parseInt(match[1]);
+      const minutes = Math.floor(seconds / 60);
+      const remainingSeconds = seconds % 60;
+      if (minutes > 0) {
+        return `${minutes}m ${remainingSeconds}s`;
+      }
+      return `${seconds}s`;
+    }
+    return duration;
+  }
+  
+  return '0s';
+};
+
+export const formatTime = (timestamp: string | { seconds: number } | any): string => {
+  try {
+    if (timestamp && typeof timestamp === 'object' && 'seconds' in timestamp) {
+      const date = new Date(timestamp.seconds * 1000);
+      return date.toLocaleTimeString();
+    }
+    
+    if (typeof timestamp === 'string') {
+      const date = new Date(timestamp);
+      if (!isNaN(date.getTime())) {
+        return date.toLocaleTimeString();
+      }
+    }
+    
+    return '';
+  } catch (error) {
+    console.error('Error formatting time:', error);
+    return '';
+  }
+};
+
+/**
+ * Geocode a postcode to coordinates using Google Maps Geocoding API
+ */
+export const geocodePostcode = async (postcode: string): Promise<{ latitude: number; longitude: number } | null> => {
+  try {
+    const geocoder = new google.maps.Geocoder();
+    
+    const result = await geocoder.geocode({
+      address: postcode + ', London, UK',
+      region: 'UK',
+    });
+
+    if (result.results && result.results.length > 0) {
+      const location = result.results[0].geometry.location;
+      return {
+        latitude: location.lat(),
+        longitude: location.lng(),
+      };
+    }
+    
+    return null;
+  } catch (error) {
+    console.error(`Failed to geocode ${postcode}:`, error);
+    return null;
+  }
+};
+
+/**
+ * Geocode multiple postcodes in batches to avoid rate limits
+ */
+export const geocodePostcodes = async (
+  postcodes: string[],
+  onProgress?: (completed: number, total: number) => void
+): Promise<Map<string, { latitude: number; longitude: number }>> => {
+  const results = new Map<string, { latitude: number; longitude: number }>();
+  const batchSize = 10; // Process 10 at a time
+  const delayMs = 200; // Delay between batches to avoid rate limits
+
+  for (let i = 0; i < postcodes.length; i += batchSize) {
+    const batch = postcodes.slice(i, i + batchSize);
+    
+    // Process batch in parallel
+    const batchResults = await Promise.all(
+      batch.map(async (postcode) => {
+        const coords = await geocodePostcode(postcode);
+        return { postcode, coords };
+      })
+    );
+
+    // Store results
+    batchResults.forEach(({ postcode, coords }) => {
+      if (coords) {
+        results.set(postcode, coords);
+      }
+    });
+
+    // Report progress
+    if (onProgress) {
+      onProgress(Math.min(i + batchSize, postcodes.length), postcodes.length);
+    }
+
+    // Delay before next batch (except for last batch)
+    if (i + batchSize < postcodes.length) {
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+  }
+
+  return results;
+};
+
+const LONDON_POSTCODES = [
+"WC2H 7BX","EC1M 5PW","E1 4QL","E2 6QA","E3 3HP","E3 5DP",
+  "N1 7GU","N5 1NU","NW1 6XE","NW3 6HU","NW8 7NB","SE1 7QD","SE11 4BT","SE26 4HG","SW1W 9SU","W1C 2JL",
+  "W8 6DW","WC1N 3LJ","EC4A 3LT","EC4M 8EB","E14 4LX","E14 8QS","N1 1TR","N4 2BE","NW1 5JB","NW5 2PB",
+  "SE1 3BP","SE6 2PR","SE23 1HT","SW1P 3JA","W1G 8LZ","W10 4LG","WC1X 9EU","WC2R 1BT","EC3M 7AA","E1 3DZ",
+  "E2 1BQ","E5 0SE","E15 2SE","N1 2AA","N10 1PY","NW2 4TP","NW8 8RH","SE1 2AE","SE15 3UX","SW1A 1QD",
+  "SW3 2EF","W1H 5HF","W2 6AA","WC1R 0NP","WC2E 6JJ","EC1V 8QT","E1W 2SW","E14 2AN","N4 1AP","NW3 1HL",
+  "SE1 1TD","SE9 2JL","SW1X 0AA","W1J 4QU","W6 7NF","WC1E 6HR","EC4N 7BP","E1 5DL","E3 1ET","N7 6QP",
+  "N16 0RQ","NW1 6AB","NW5 3HA","SE1 0NY","SE15 2EH","SW6 1LR","W1T 1AJ","W2 2UH","WC2B 6EX","EC3A 7DP",
+    "BR1 1AA", "BR2 9EF", "BR3 3NH", "BR5 1AJ", "BR6 0RL", "BR7 5AB",
+  "CR0 1AA", "CR2 6AQ", "CR4 7AL", "CR7 8BD", "CR8 2BN", "CR9 1AT",
+  "DA1 4AL", "DA5 1AA", "DA6 7AY", "DA14 4AS", "DA15 7DW", "DA16 1BW",
+  "E4 6AG", "E6 1AA", "E10 5HH", "E11 1AA", "E12 5DB", "E17 3AA", "E18 1AA",
+  "EN1 1AA", "EN2 6AA", "EN3 4AA", "EN4 8AA", "EN5 1AA",
+  "HA0 1AA", "HA1 1AA", "HA2 0AA", "HA3 5AA", "HA5 1AA", "HA8 0AA", "HA9 0AA",
+  "IG1 1AA", "IG2 6AA", "IG3 8AA", "IG6 1AA", "IG8 0AA", "IG11 7AA",
+  "KT1 1AA", "KT2 5AA", "KT3 3AA", "KT4 7AA", "KT6 4AA", "KT9 1AA",
+  "N3 1AA", "N9 0AA", "N11 1AA", "N12 0AA", "N13 4AA", "N14 5AA", "N20 0AA", "N21 1AA",
+  "NW2 1AA", "NW4 1AA", "NW7 1AA", "NW9 0AA", "NW10 1AA",
+  "RM1 1AA", "RM2 5AA", "RM3 0AA", "RM6 4AA", "RM8 1AA", "RM11 1AA", "RM12 4AA",
+  "SE2 0AA", "SE3 0AA", "SE6 1AA", "SE9 1AA", "SE12 0AA", "SE18 1AA", "SE20 7AA", "SE25 4AA",
+  "SM1 1AA", "SM2 5AA", "SM3 8AA", "SM4 4AA", "SM5 1AA", "SM6 0AA",
+  "SW14 7AA", "SW15 1AA", "SW16 1AA", "SW17 0AA", "SW19 1AA", "SW20 0AA",
+  "TW1 1AA", "TW3 1AA", "TW5 0AA", "TW7 4AA", "TW9 1AA", "TW13 4AA",
+  "UB1 1AA", "UB2 4AA", "UB3 1AA", "UB5 4AA", "UB6 0AA", "UB8 1AA", "UB10 0AA",
+  "W3 0AA", "W4 1AA", "W5 1AA", "W7 1AA", "W13 0AA",
+
+  // Enfield / Barnet (EN, N outer)
+  "EN1 1AA","EN1 2JP","EN2 6RT","EN3 5HX","EN4 8QF","EN5 4DL","EN6 1AB","EN7 6QR",
+  "N11 1QG","N11 2AB","N12 0JP","N13 4RD","N14 6QA","N20 9DB",
+
+  // Harrow / Brent / Wembley (HA)
+  "HA0 1AA","HA0 4TX","HA1 1BQ","HA1 4FH","HA2 6AB","HA2 9RS","HA3 5UX","HA3 8NP",
+  "HA4 0DR","HA4 9QD","HA5 1RF","HA5 3LL","HA6 1NW","HA6 2YY",
+
+  // Hillingdon / Uxbridge / Hayes (UB)
+  "UB1 1AF","UB2 3QP","UB3 4AZ","UB4 8RN","UB5 6HJ","UB6 0FD","UB7 9DP",
+  "UB8 1QS","UB9 6AD","UB10 0XY","UB11 1AA",
+
+  // Ealing / West London outer (W)
+  "W3 7AB","W4 5RP","W5 3HT","W7 2AJ","W13 0DH",
+
+  // Hounslow / Twickenham (TW)
+  "TW1 1AE","TW1 4HF","TW2 5NB","TW3 3AT","TW4 6QS","TW5 0PL","TW7 7DX",
+  "TW8 9DF","TW9 1UJ","TW10 5NG","TW11 9LR","TW12 2AB","TW13 6RT","TW14 0QA",
+
+  // Kingston / Surbiton (KT)
+  "KT1 1AA","KT1 3JP","KT2 5TN","KT3 6RF","KT4 8BQ","KT5 9LP","KT6 4DN",
+  "KT7 0XH","KT8 1QS","KT9 2AB",
+
+  // Bromley / Orpington (BR)
+  "BR1 1AB","BR1 3JP","BR2 0AA","BR3 4HQ","BR4 9DX","BR5 1LL",
+  "BR6 7QS","BR7 5NP","BR8 8QA",
+
+  // Croydon (CR)
+  "CR0 1AA","CR0 4AB","CR2 6JP","CR3 5TN","CR4 1XG",
+  "CR5 2AD","CR6 9PL","CR7 8HX","CR8 3QS","CR9 2AJ",
+
+  // Bexley / Dartford (DA)
+  "DA1 1AA","DA2 6JP","DA3 7TN","DA4 9QS","DA5 1AB",
+  "DA6 8HQ","DA7 5RF","DA8 3LL","DA9 9DX",
+
+  // Havering / Romford (RM)
+  "RM1 1AA","RM1 4JP","RM2 5TN","RM3 8AB","RM4 1QS",
+  "RM5 3DX","RM6 6HQ","RM7 9RF","RM8 2LL","RM9 5NP",
+  "RM10 7AB","RM11 3JP","RM12 4TN","RM13 8QS","RM14 1DX",
+
+  // Redbridge / Ilford (IG)
+  "IG1 1AA","IG1 4JP","IG2 6TN","IG3 8AB","IG4 5QS",
+  "IG5 0DX","IG6 2HQ","IG7 9RF","IG8 1LL","IG9 6NP",
+
+  // Outer East London (E)
+  "E4 6AA","E6 1JP","E7 0TN","E10 5AB","E11 3QS",
+  "E12 6DX","E13 9HQ","E15 2RF","E17 1LL","E18 5NP",
+
+  // Outer South East London (SE)
+  "SE2 0AA","SE3 9JP","SE6 4TN","SE7 8AB","SE9 1QS",
+  "SE12 0DX","SE13 6HQ","SE18 2RF","SE19 1LL","SE20 7NP",
+
+  // Outer South West London (SW)
+  "SW12 9AA","SW13 0JP","SW15 3TN","SW16 6AB",
+  "SW17 8QS","SW18 4DX","SW19 1HQ","SW20 9RF"
+];
+
+export interface PostcodeCase {
+  postcode: string;
+}
+
+/**
+ * Randomly select unique postcodes from the real London postcodes array
+ * Each postcode will only be used once (no duplicates)
+ */
+export const generateMultiplePostcodes = (count: number): PostcodeCase[] => {
+  if (count > LONDON_POSTCODES.length) {
+    console.warn(`⚠️  Requested ${count} postcodes but only ${LONDON_POSTCODES.length} unique postcodes available. Will use all available.`);
+    count = LONDON_POSTCODES.length;
+  }
+  
+  // Create a copy of the postcodes array and shuffle it
+  const shuffledPostcodes = [...LONDON_POSTCODES];
+  
+  // Fisher-Yates shuffle algorithm
+  for (let i = shuffledPostcodes.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffledPostcodes[i], shuffledPostcodes[j]] = [shuffledPostcodes[j], shuffledPostcodes[i]];
+  }
+  
+  // Take the first 'count' postcodes (all unique)
+  return shuffledPostcodes.slice(0, count).map(postcode => ({ postcode }));
+};
+
+/**
+ * Get a random postcode for agent locations
+ */
+export const getRandomPostcode = (): string => {
+  const randomIndex = Math.floor(Math.random() * LONDON_POSTCODES.length);
+  return LONDON_POSTCODES[randomIndex];
+};
+
+/**
+ * Convert time string (e.g., "09:00") to seconds since midnight
+ */
+export const timeToSeconds = (timeString: string): number => {
+  const [hours, minutes] = timeString.split(':').map(Number);
+  return hours * 3600 + minutes * 60;
+};
+
+/**
+ * Get time window for 9am-5pm shift
+ */
+export const getShiftTimeWindow = () => {
+  return {
+    startTime: { seconds: timeToSeconds('09:00') },
+    endTime: { seconds: timeToSeconds('17:00') },
+  };
+};
+
+/**
+ * Get lunch break constraint (45 minutes)
+ */
+export const getLunchBreakConstraint = () => {
+  return {
+    startTime: { seconds: timeToSeconds('12:00') },
+    duration: { seconds: 45 * 60 }, // 45 minutes
+  };
+};
+
+import type { CasePriority } from '../types/route';
+
+/**
+ * Map case priority to penalty cost for route optimization
+ * Penalty cost represents the "cost" of NOT completing this delivery
+ * Higher priority = higher cost to skip = more likely to be included
+ */
+export const getPenaltyCost = (priority: CasePriority): number => {
+  switch (priority) {
+    case 'high':
+      return 1000; // High cost to skip high-priority cases
+    case 'medium':
+      return 300; // Medium cost to skip medium-priority cases
+    case 'low':
+      return 100; // Low cost to skip low-priority cases
+    default:
+      return 300;
+  }
+};
+
+/**
+ * Get display label for penalty cost
+ */
+export const getPenaltyCostLabel = (priority: CasePriority): string => {
+  const cost = getPenaltyCost(priority);
+  return `£${cost}`;
+};
+
+// utils/timeSlotGenerator.ts
+import type { TimeSlot } from '../types/route';
+
+/**
+ * Generate a random time in HH:mm format with 15-minute increments between 9am-5pm
+ */
+const generateRandomTimeIncrements = (): string => {
+  // Generate hours between 9-16 (9am-4:45pm to allow for 15-min window)
+  const minHour = 9;
+  const maxHour = 16; // Up to 4:45pm so end time can be 5pm
+  const hours = minHour + Math.floor(Math.random() * (maxHour - minHour + 1));
+  
+  // Generate minutes in 15-minute increments (0, 15, 30, 45)
+  const minutes = Math.floor(Math.random() * 4) * 15;
+  
+  // Make sure we don't go past 4:45pm
+  if (hours === 16 && minutes === 45) {
+    // If we hit 4:45pm, ensure end time won't exceed 5pm
+    return '16:30'; // Return 4:30pm instead
+  }
+  
+  return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+};
+
+/**
+ * Generate a random delivery time slot (15-minute window) between 9am-5pm
+ * Returns undefined for cases that don't need a slot (11 out of 12)
+ */
+export const generateDeliverySlot = (): TimeSlot | undefined => {
+  // 1 in 12 cases should have a delivery slot
+  if (Math.random() > 1/12) {
+    return undefined;
+  }
+  
+  // Generate a random start time between 9am-4:45pm
+  const startTime = generateRandomTimeIncrements();
+  
+  // End time is 15 minutes after start time
+  const [startHours, startMinutes] = startTime.split(':').map(Number);
+  let endMinutes = startMinutes + 15;
+  let endHours = startHours;
+  
+  if (endMinutes >= 60) {
+    endMinutes -= 60;
+    endHours += 1;
+  }
+  
+  const endTime = `${endHours.toString().padStart(2, '0')}:${endMinutes.toString().padStart(2, '0')}`;
+  
+  return {
+    startTime,
+    endTime,
+  };
+};
+
+/**
+ * Generate array of time options in 15-minute increments
+ * @param extended - If true, range is 7am-8pm. If false, range is 9am-5pm
+ */
+export const generateTimeOptions = (extended: boolean = false): string[] => {
+  const options: string[] = [];
+  
+  const startHour = extended ? 7 : 9;
+  const endHour = extended ? 20 : 17;
+  
+  for (let hours = startHour; hours <= endHour; hours++) {
+    for (let minutes = 0; minutes < 60; minutes += 15) {
+      // Don't add times after end hour
+      if (hours === endHour && minutes > 0) {
+        break;
+      }
+      
+      const time = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+      options.push(time);
+    }
+  }
+  
+  return options;
+};
+
+/**
+ * Generate lunch duration options from 0 to 120 minutes in 15-minute increments
+ */
+export const generateLunchOptions = (): Array<{ value: number; label: string }> => {
+  const options: Array<{ value: number; label: string }> = [];
+  
+  for (let minutes = 0; minutes <= 120; minutes += 15) {
+    let label: string;
+    
+    if (minutes === 0) {
+      label = 'No lunch break';
+    } else if (minutes === 60) {
+      label = '1 hour';
+    } else if (minutes > 60) {
+      const hours = Math.floor(minutes / 60);
+      const remainingMinutes = minutes % 60;
+      if (remainingMinutes === 0) {
+        label = `${hours} hours`;
+      } else {
+        label = `${hours}h ${remainingMinutes}min`;
+      }
+    } else {
+      label = `${minutes} min`;
+    }
+    
+    options.push({ value: minutes, label });
+  }
+  
+  return options;
+};
+
+/**
+ * Convert time string (HH:mm) to seconds since midnight
+ */
+export const timeStringToSeconds = (time: string): number => {
+  const [hours, minutes] = time.split(':').map(Number);
+  return hours * 3600 + minutes * 60;
+};
+
+// FRONTEND - types
+
+// types/route.ts
+
+export interface Location {
+  latitude: number;
+  longitude: number;
+}
+
+export interface Visit {
+  shipmentIndex: number;
+  shipmentLabel: string;
+  startTime: string | { seconds: number };
+  arrivalLocation?: Location;
+}
+
+export interface RouteMetrics {
+  travelDuration: string | { seconds: number };
+  travelDistance: number;
+}
+
+export interface OptimizedRoute {
+  vehicleLabel: string;
+  visits: Visit[];
+  metrics: RouteMetrics;
+}
+
+export type CasePriority = 'low' | 'medium' | 'high';
+export type CaseStatus = 'pending' | 'complete';
+
+export interface TimeSlot {
+  startTime: string; // Format: "HH:mm"
+  endTime: string;   // Format: "HH:mm"
+}
+
+export interface CaseData {
+  id: string;
+  postcode: string;
+  location?: Location; // Geocoded coordinates
+  priority: CasePriority;
+  status: CaseStatus;
+  assignedAgentIndex: number | null; // null if unallocated
+  deliveryTime?: string | { seconds: number }; // Expected delivery time
+  deliverySlot?: TimeSlot; // Required delivery time window (optional)
+}
+
+export interface PriorityChange {
+  caseId: string;
+  casePostcode: string;
+  oldPriority: CasePriority;
+  newPriority: CasePriority;
+  timestamp: Date;
+}
+
+export interface TimeSlotChange {
+  caseId: string;
+  casePostcode: string;
+  oldSlot: TimeSlot | undefined;
+  newSlot: TimeSlot | undefined;
+  timestamp: Date;
+}
+
+export type CaseChange = PriorityChange | TimeSlotChange;
+
+// Agent Settings Types
+export interface AgentSettings {
+  startTime: string; // "HH:mm"
+  endTime: string;   // "HH:mm"
+  lunchDuration: number; // minutes
+  active: boolean; // whether agent is active or inactive
+}
+
+export interface AgentChange {
+  agentIndex: number;
+  agentLabel: string;
+  oldSettings: AgentSettings;
+  newSettings: AgentSettings;
+  timestamp: Date;
+}
+
+export type Change = CaseChange | AgentChange;
+
+// Scenario Types
+export interface ScenarioConfig {
+  name: string;
+  description: string;
+  caseCount: number;
+  agentPostcodes: string[];
+  defaultStartTime: string;
+  defaultEndTime: string;
+  defaultLunchDuration: number;
+}
+
+export type ScenarioType = 'full' | 'reduced';
+
+// SERVER
+
+import express, { Request, Response } from 'express';
+import cors from 'cors';
+import dotenv from 'dotenv';
+import { RouteOptimizationClient } from '@googlemaps/routeoptimization';
+
+// ⚠️ CRITICAL: Load .env file FIRST before anything else!
+dotenv.config();
+
+const app = express();
+app.use(express.json());
+app.use(cors());
+
+// 🔍 DEBUG: Check if environment variables are loaded
+console.log('🔍 Environment Check:');
+console.log('   PROJECT_ID:', process.env.GOOGLE_CLOUD_PROJECT_ID);
+console.log('   CREDENTIALS PATH:', process.env.GOOGLE_APPLICATION_CREDENTIALS);
+console.log('   PORT:', process.env.PORT);
+
+// Validate environment variables
+if (!process.env.GOOGLE_CLOUD_PROJECT_ID) {
+  console.error('❌ ERROR: GOOGLE_CLOUD_PROJECT_ID not found in .env file!');
+  process.exit(1);
+}
+
+if (!process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+  console.error('❌ ERROR: GOOGLE_APPLICATION_CREDENTIALS not found in .env file!');
+  process.exit(1);
+}
+
+// Initialize the client with your credentials
+const client = new RouteOptimizationClient({
+  keyFilename: process.env.GOOGLE_APPLICATION_CREDENTIALS,
+});
+
+// Optimize routes endpoint
+app.post('/api/optimize-routes', async (req: Request, res: Response) => {
+  try {
+    const { model } = req.body;
+    
+    // ⚠️ IMPORTANT: Always use the project ID from .env, NOT from the request
+    const projectId = process.env.GOOGLE_CLOUD_PROJECT_ID!;
+    
+    console.log('📍 Optimizing routes for project:', projectId);
+    console.log('📦 Number of shipments:', model.shipments?.length);
+    console.log('🚚 Number of vehicles:', model.vehicles?.length);
+
+    // Debug: Log first shipment to verify structure
+    if (model.shipments && model.shipments.length > 0) {
+      console.log('📋 Sample shipment received:', JSON.stringify(model.shipments[0], null, 2));
+    }
+
+    // Check if penalty costs are being used (for priority-based optimization)
+    const hasPenaltyCosts = model.shipments?.some((s: any) => s.penaltyCost !== undefined);
+    if (hasPenaltyCosts) {
+      console.log('💰 Priority-based optimization enabled (using penalty costs)');
+      const costs = model.shipments
+        .map((s: any) => s.penaltyCost)
+        .filter((c: any) => c !== undefined) as number[];
+      const uniqueCosts = [...new Set(costs)].sort((a, b) => b - a);
+      console.log('   Penalty cost levels:', uniqueCosts);
+    }
+
+    // Check for delivery time slots
+    const hasTimeSlots = model.shipments?.some((s: any) => 
+      s.deliveries?.[0]?.timeWindows?.[0]?.startTime?.seconds !== 32400 ||
+      s.deliveries?.[0]?.timeWindows?.[0]?.endTime?.seconds !== 61200
+    );
+    if (hasTimeSlots) {
+      const slotsCount = model.shipments.filter((s: any) => 
+        s.deliveries?.[0]?.timeWindows?.[0]?.startTime?.seconds !== 32400
+      ).length;
+      console.log(`⏰ Delivery time slots detected: ${slotsCount} cases have specific time windows`);
+    }
+
+    // Call the Route Optimization API
+    // The API natively supports:
+    // - penaltyCost: Cost of NOT completing a shipment (higher = higher priority)
+    // - The optimizer will prefer shipments with higher penalty costs
+    // - This allows priority-based routing without custom modifications
+    const [response] = await client.optimizeTours({
+      parent: `projects/${projectId}`,
+      model: {
+        shipments: model.shipments,
+        vehicles: model.vehicles,
+      },
+      searchMode: 'RETURN_FAST',
+    });
+
+    console.log('✅ Optimization successful!');
+    
+    // Log skipped shipments if any (these are low-priority cases that couldn't fit)
+    if (response.skippedShipments && response.skippedShipments.length > 0) {
+      console.log('⚠️  Skipped shipments:', response.skippedShipments.length);
+    }
+    
+    res.json(response);
+  } catch (error) {
+    console.error('❌ Route optimization error:', error);
+    res.status(500).json({
+      error: 'Failed to optimize routes',
+      details: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+// Health check endpoint
+app.get('/api/health', (req: Request, res: Response) => {
+  res.json({ 
+    status: 'ok', 
+    timestamp: new Date().toISOString(),
+    projectId: process.env.GOOGLE_CLOUD_PROJECT_ID,
+  });
+});
+
+// Test environment variables endpoint
+app.get('/api/debug', (req: Request, res: Response) => {
+  res.json({
+    envLoaded: !!process.env.GOOGLE_CLOUD_PROJECT_ID,
+    projectId: process.env.GOOGLE_CLOUD_PROJECT_ID,
+    credentialsPath: process.env.GOOGLE_APPLICATION_CREDENTIALS,
+    port: process.env.PORT,
+  });
+});
+
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => {
+  console.log('🚀 Route Optimization server running');
+  console.log(`📍 Port: ${PORT}`);
+  console.log(`🔗 Endpoint: http://localhost:${PORT}/api/optimize-routes`);
+  console.log(`🔍 Debug: http://localhost:${PORT}/api/debug`);
+});
+
+export default app;
+
