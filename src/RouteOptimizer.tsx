@@ -2,10 +2,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useJsApiLoader } from '@react-google-maps/api';
 import type { Location, OptimizedRoute, CaseData, CasePriority, CaseChange, TimeSlot, AgentSettings, AgentChange, ScenarioConfig, ScenarioType } from './types/route';
-import { RouteMap } from './components/RouteMap';
-import { RouteDetails } from './components/RouteDetails';
 import { Header } from './components/Header';
 import { LandingPage } from './components/LandingPage';
+import { CaseController } from './components/CaseController';
 
 // Scenario Definitions
 const SCENARIOS: Record<ScenarioType, ScenarioConfig> = {
@@ -680,19 +679,30 @@ const RouteOptimizer: React.FC = () => {
         )}
 
         {optimizedRoutes.length > 0 && (
-          <div className="flex-1 bg-yellow-300 flex items-center justify-center p-8">
-            <div className="text-center max-w-md">
-              <h2 className="text-2xl font-bold text-gray-900 mb-4">
-                📱 Mobile View Coming Soon
-              </h2>
-              <p className="text-gray-800 mb-4">
-                Routes optimized! Mobile interface for viewing routes is under development.
-              </p>
-              <p className="text-sm text-gray-700">
-                Please use a desktop screen (≥768px) to view and manage your optimized routes.
-              </p>
-            </div>
-          </div>
+          <CaseController
+            routes={optimizedRoutes}
+            agentLocations={agentLocations}
+            cases={cases}
+            agentSettings={agentSettings}
+            optimizedAgentSettings={optimizedAgentSettings}
+            caseChanges={caseChanges}
+            agentChanges={agentChanges}
+            unallocatedCases={unallocatedCases}
+            routesVersion={routesVersion}
+            originalCasePriorities={originalCaseData.current}
+            onPriorityChange={handlePriorityChange}
+            onSlotChange={handleSlotChange}
+            onAgentSettingsChange={handleAgentSettingsChange}
+            onRecalculate={handleRecalculate}
+            onDeleteCaseChange={handleDeleteCaseChange}
+            onDeleteAgentChange={handleDeleteAgentChange}
+            onUnallocatedCasesUpdate={setUnallocatedCases}
+            isRecalculating={loading}
+            googleMapsApiKey={googleMapsApiKey}
+            isLoaded={isLoaded}
+            error={error}
+            isMobile={true}
+          />
         )}
       </div>
     );
@@ -703,87 +713,53 @@ const RouteOptimizer: React.FC = () => {
     <div className="flex flex-col h-screen bg-gray-50">
       <Header />
 
-      <div className="flex flex-1 overflow-hidden">
-        <div className="flex-1 flex flex-col relative">
-          {!googleMapsApiKey && (
-            <div className="absolute inset-0 flex items-center justify-center bg-gray-100 z-10">
-              <div className="text-center p-8 bg-white rounded-lg shadow-lg max-w-md">
-                <h2 className="text-xl font-bold text-yellow-600 mb-4">⚠️ Google Maps API Key Missing:</h2>
-                <p className="text-gray-700">
-                  Add `VITE_GOOGLE_MAPS_API_KEY` to your .env file to enable the map.
-                </p>
-              </div>
-            </div>
-          )}
+      {/* Landing Page */}
+      {optimizedRoutes.length === 0 && !loading && (
+        <LandingPage onScenarioSelect={handleScenarioSelect} />
+      )}
 
-          {optimizedRoutes.length === 0 && !loading && (
-            <LandingPage onScenarioSelect={handleScenarioSelect} />
-          )}
-
-          {loading && optimizedRoutes.length === 0 && (
-            <div className="absolute inset-0 flex items-center justify-center bg-gray-50 z-10">
-              <div className="text-center">
-                <div className="text-4xl mb-4">⏳</div>
-                <h2 className="text-xl font-bold text-gray-900 mb-2">Geocoding & Optimizing...</h2>
-                <p className="text-gray-600">
-                  {selectedScenario === 'full'
-                    ? 'Processing 200 cases across 6 agents'
-                    : 'Processing 8 cases across 2 agents'}
-                </p>
-              </div>
-            </div>
-          )}
-
-          {error && (
-            <div className="absolute inset-0 flex items-center justify-center bg-gray-50 z-10">
-              <div className="text-center p-8 bg-white rounded-lg shadow-lg max-w-md">
-                <h2 className="text-xl font-bold text-red-600 mb-4">❌ Error:</h2>
-                <p className="text-gray-700">{error}</p>
-              </div>
-            </div>
-          )}
-
-          {optimizedRoutes.length > 0 && googleMapsApiKey && isLoaded && (
-            <div className="relative w-full h-full">
-              <RouteMap
-                routes={optimizedRoutes}
-                agentLocations={agentLocations}
-                cases={cases}
-                unallocatedCases={unallocatedCases}
-                routesVersion={routesVersion}
-                agentSettings={optimizedAgentSettings}
-                originalCasePriorities={originalCaseData.current}
-              />
-            </div>
-          )}
-
-          {optimizedRoutes.length > 0 && googleMapsApiKey && !isLoaded && (
-            <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
-              <div className="text-lg text-gray-700">Loading map...</div>
-            </div>
-          )}
-        </div>
-
-        {optimizedRoutes.length > 0 && (
-          <div className="w-[400px] border-l border-gray-200 bg-white">
-            <RouteDetails
-              routes={optimizedRoutes}
-              cases={cases}
-              agentSettings={agentSettings}
-              onPriorityChange={handlePriorityChange}
-              onSlotChange={handleSlotChange}
-              onAgentSettingsChange={handleAgentSettingsChange}
-              caseChanges={caseChanges}
-              agentChanges={agentChanges}
-              onRecalculate={handleRecalculate}
-              onDeleteCaseChange={handleDeleteCaseChange}
-              onDeleteAgentChange={handleDeleteAgentChange}
-              isRecalculating={loading}
-              onUnallocatedCasesUpdate={setUnallocatedCases}
-            />
+      {/* Loading State During Optimization */}
+      {loading && optimizedRoutes.length === 0 && (
+        <div className="flex-1 flex items-center justify-center bg-gray-50">
+          <div className="text-center">
+            <div className="text-4xl mb-4">⏳</div>
+            <h2 className="text-xl font-bold text-gray-900 mb-2">Geocoding & Optimizing...</h2>
+            <p className="text-gray-600">
+              {selectedScenario === 'full'
+                ? 'Processing 200 cases across 6 agents'
+                : 'Processing 8 cases across 2 agents'}
+            </p>
           </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {/* Case Controller - Map and Route Details */}
+      {optimizedRoutes.length > 0 && (
+        <CaseController
+          routes={optimizedRoutes}
+          agentLocations={agentLocations}
+          cases={cases}
+          agentSettings={agentSettings}
+          optimizedAgentSettings={optimizedAgentSettings}
+          caseChanges={caseChanges}
+          agentChanges={agentChanges}
+          unallocatedCases={unallocatedCases}
+          routesVersion={routesVersion}
+          originalCasePriorities={originalCaseData.current}
+          onPriorityChange={handlePriorityChange}
+          onSlotChange={handleSlotChange}
+          onAgentSettingsChange={handleAgentSettingsChange}
+          onRecalculate={handleRecalculate}
+          onDeleteCaseChange={handleDeleteCaseChange}
+          onDeleteAgentChange={handleDeleteAgentChange}
+          onUnallocatedCasesUpdate={setUnallocatedCases}
+          isRecalculating={loading}
+          googleMapsApiKey={googleMapsApiKey}
+          isLoaded={isLoaded}
+          error={error}
+          isMobile={false}
+        />
+      )}
     </div>
   );
 };
