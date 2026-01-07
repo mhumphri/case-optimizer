@@ -3,6 +3,8 @@ import React, { useState } from 'react';
 import type { Location, OptimizedRoute, CaseData, CasePriority, CaseChange, TimeSlot, AgentSettings, AgentChange } from '../types/route';
 import { RouteMap } from './RouteMap';
 import { RouteDetails } from './RouteDetails';
+import { AgentList } from './AgentList';
+import { CaseList } from './CaseList';
 
 interface CaseControllerProps {
   routes: OptimizedRoute[];
@@ -30,6 +32,8 @@ interface CaseControllerProps {
 }
 
 type MobileView = 'map' | 'agents' | 'cases';
+type AgentFilter = 'all' | 'active' | 'inactive';
+type CaseFilter = 'all' | 'allocated' | 'unallocated';
 
 export const CaseController: React.FC<CaseControllerProps> = ({
   routes,
@@ -56,6 +60,35 @@ export const CaseController: React.FC<CaseControllerProps> = ({
   isMobile = false,
 }) => {
   const [activeView, setActiveView] = useState<MobileView>('map');
+  const [agentFilter, setAgentFilter] = useState<AgentFilter>('all');
+  const [caseFilter, setCaseFilter] = useState<CaseFilter>('all');
+
+  // Calculate filter counts for mobile
+  const agentCounts = React.useMemo(() => {
+    const active = routes.filter((_, index) => {
+      const agentChange = agentChanges.find(change => change.agentIndex === index);
+      if (agentChange) {
+        return agentChange.oldSettings.active;
+      }
+      return agentSettings[index].active;
+    }).length;
+    const inactive = routes.length - active;
+    return {
+      all: routes.length,
+      active,
+      inactive,
+    };
+  }, [routes, agentSettings, agentChanges]);
+
+  const caseCounts = React.useMemo(() => {
+    const allocated = cases.filter(c => c.assignedAgentIndex !== null).length;
+    const unallocated = cases.filter(c => c.assignedAgentIndex === null).length;
+    return {
+      all: cases.length,
+      allocated,
+      unallocated,
+    };
+  }, [cases]);
 
   // Mobile View
   if (isMobile) {
@@ -109,18 +142,66 @@ export const CaseController: React.FC<CaseControllerProps> = ({
 
           {/* Agents Modal Overlay */}
           {activeView === 'agents' && (
-            <div className="absolute inset-0 bg-white z-20 flex items-center justify-center">
-              <div className="text-center text-gray-900 font-semibold text-lg">
-                Agents Modal
+            <div className="absolute inset-0 bg-white z-20 overflow-y-auto flex flex-col">
+              <div className="shrink-0 p-4 border-b border-gray-200 bg-white">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Filter Agents
+                  </label>
+                  <select
+                    value={agentFilter}
+                    onChange={(e) => setAgentFilter(e.target.value as AgentFilter)}
+                    className="w-full text-sm border border-gray-300 rounded px-3 py-2 bg-white cursor-pointer"
+                  >
+                    <option value="all">All Agents ({agentCounts.all})</option>
+                    <option value="active">Active Only ({agentCounts.active})</option>
+                    <option value="inactive">Inactive Only ({agentCounts.inactive})</option>
+                  </select>
+                </div>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4">
+                <AgentList
+                  routes={routes}
+                  agentSettings={agentSettings}
+                  cases={cases}
+                  onPriorityChange={onPriorityChange}
+                  onSlotChange={onSlotChange}
+                  onAgentSettingsChange={onAgentSettingsChange}
+                  agentChanges={agentChanges}
+                  filterMode={agentFilter}
+                />
               </div>
             </div>
           )}
 
           {/* Cases Modal Overlay */}
           {activeView === 'cases' && (
-            <div className="absolute inset-0 bg-white z-20 flex items-center justify-center">
-              <div className="text-center text-gray-900 font-semibold text-lg">
-                Cases Modal
+            <div className="absolute inset-0 bg-white z-20 overflow-y-auto flex flex-col">
+              <div className="shrink-0 p-4 border-b border-gray-200 bg-white">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Filter Cases
+                  </label>
+                  <select
+                    value={caseFilter}
+                    onChange={(e) => setCaseFilter(e.target.value as CaseFilter)}
+                    className="w-full text-sm border border-gray-300 rounded px-3 py-2 bg-white cursor-pointer"
+                  >
+                    <option value="all">All Cases ({caseCounts.all})</option>
+                    <option value="allocated">Allocated Only ({caseCounts.allocated})</option>
+                    <option value="unallocated">Unallocated Only ({caseCounts.unallocated})</option>
+                  </select>
+                </div>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4">
+                <CaseList
+                  cases={cases}
+                  routes={routes}
+                  unallocatedCases={unallocatedCases}
+                  onPriorityChange={onPriorityChange}
+                  onSlotChange={onSlotChange}
+                  filterMode={caseFilter}
+                />
               </div>
             </div>
           )}
