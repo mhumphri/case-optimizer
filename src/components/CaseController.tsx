@@ -61,67 +61,66 @@ export const CaseController: React.FC<CaseControllerProps> = ({
   if (isMobile) {
     return (
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Content Area - fills space between header and bottom nav */}
+        {/* Content Area - RouteMap always rendered */}
         <div className="flex-1 overflow-hidden relative">
-          {/* Map View */}
-          {activeView === 'map' && (
-            <>
-              {!googleMapsApiKey && (
-                <div className="absolute inset-0 flex items-center justify-center bg-gray-100 z-10">
-                  <div className="text-center p-6 bg-white rounded-lg shadow-lg max-w-sm mx-4">
-                    <h2 className="text-lg font-bold text-yellow-600 mb-3">⚠️ API Key Missing</h2>
-                    <p className="text-sm text-gray-700">
-                      Add `VITE_GOOGLE_MAPS_API_KEY` to your .env file to enable the map.
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              {error && (
-                <div className="absolute inset-0 flex items-center justify-center bg-gray-50 z-10">
-                  <div className="text-center p-6 bg-white rounded-lg shadow-lg max-w-sm mx-4">
-                    <h2 className="text-lg font-bold text-red-600 mb-3">❌ Error</h2>
-                    <p className="text-sm text-gray-700">{error}</p>
-                  </div>
-                </div>
-              )}
-
-              {!error && googleMapsApiKey && isLoaded && (
-                <div className="w-full h-full">
-                  <RouteMap
-                    routes={routes}
-                    agentLocations={agentLocations}
-                    cases={cases}
-                    unallocatedCases={unallocatedCases}
-                    routesVersion={routesVersion}
-                    agentSettings={optimizedAgentSettings}
-                    originalCasePriorities={originalCasePriorities}
-                  />
-                </div>
-              )}
-
-              {!error && googleMapsApiKey && !isLoaded && (
-                <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
-                  <div className="text-sm text-gray-700">Loading map...</div>
-                </div>
-              )}
-            </>
-          )}
-
-          {/* Agents View - Placeholder */}
-          {activeView === 'agents' && (
-            <div className="flex-1 bg-yellow-300 flex items-center justify-center">
-              <div className="text-center text-gray-900 font-semibold text-lg">
-                Agents View (Coming Soon)
+          {/* API Key Missing Warning */}
+          {!googleMapsApiKey && (
+            <div className="absolute inset-0 flex items-center justify-center bg-gray-100 z-10">
+              <div className="text-center p-6 bg-white rounded-lg shadow-lg max-w-sm mx-4">
+                <h2 className="text-lg font-bold text-yellow-600 mb-3">⚠️ API Key Missing</h2>
+                <p className="text-sm text-gray-700">
+                  Add `VITE_GOOGLE_MAPS_API_KEY` to your .env file to enable the map.
+                </p>
               </div>
             </div>
           )}
 
-          {/* Cases View - Placeholder */}
-          {activeView === 'cases' && (
-            <div className="flex-1 bg-yellow-300 flex items-center justify-center">
+          {/* Error State */}
+          {error && (
+            <div className="absolute inset-0 flex items-center justify-center bg-gray-50 z-10">
+              <div className="text-center p-6 bg-white rounded-lg shadow-lg max-w-sm mx-4">
+                <h2 className="text-lg font-bold text-red-600 mb-3">❌ Error</h2>
+                <p className="text-sm text-gray-700">{error}</p>
+              </div>
+            </div>
+          )}
+
+          {/* RouteMap - Always Rendered */}
+          {!error && googleMapsApiKey && isLoaded && (
+            <div className="w-full h-full">
+              <RouteMap
+                routes={routes}
+                agentLocations={agentLocations}
+                cases={cases}
+                unallocatedCases={unallocatedCases}
+                routesVersion={routesVersion}
+                agentSettings={optimizedAgentSettings}
+                originalCasePriorities={originalCasePriorities}
+              />
+            </div>
+          )}
+
+          {/* Map Loading State */}
+          {!error && googleMapsApiKey && !isLoaded && (
+            <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
+              <div className="text-sm text-gray-700">Loading map...</div>
+            </div>
+          )}
+
+          {/* Agents Modal Overlay */}
+          {activeView === 'agents' && (
+            <div className="absolute inset-0 bg-white z-20 flex items-center justify-center">
               <div className="text-center text-gray-900 font-semibold text-lg">
-                Cases View (Coming Soon)
+                Agents Modal
+              </div>
+            </div>
+          )}
+
+          {/* Cases Modal Overlay */}
+          {activeView === 'cases' && (
+            <div className="absolute inset-0 bg-white z-20 flex items-center justify-center">
+              <div className="text-center text-gray-900 font-semibold text-lg">
+                Cases Modal
               </div>
             </div>
           )}
