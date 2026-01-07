@@ -34,3 +34,11 @@ dist-ssr
 service-account-key.json
 *-service-account-*.json
 credentials.json
+
+# Firebase
+.firebase/
+firebase-debug.log*
+ui-debug.log*
+
+# Vite / App Engine
+.gcloudignore

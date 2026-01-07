@@ -1,0 +1,15 @@
+{
+  "projects": {
+    "default": "applied-plexus-360100"
+  },
+  "targets": {
+    "applied-plexus-360100": {
+      "hosting": {
+        "case-optimizer": [
+          "case-optimizer"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}

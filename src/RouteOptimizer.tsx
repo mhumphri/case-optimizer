@@ -532,7 +532,9 @@ const RouteOptimizer: React.FC = () => {
       });
       console.log(`  Active agents: ${activeAgentIndices.length}/${currentAgentSettings.length}`);
 
-      const response = await fetch('http://localhost:3001/api/optimize-routes', {
+      //http://localhost:3001/api/optimize-routes
+      //https://applied-plexus-360100.nw.r.appspot.com/api/optimize-routes
+      const response = await fetch('https://applied-plexus-360100.nw.r.appspot.com/api/optimize-routes', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
