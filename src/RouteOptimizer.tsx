@@ -1,10 +1,11 @@
-// RouteOptimizer.tsx - COMPLETE FILE with editable start location support
-import React, { useState, useRef } from 'react';
+// RouteOptimizer.tsx - COMPLETE FILE with responsive mobile/desktop views
+import React, { useState, useRef, useEffect } from 'react';
 import { useJsApiLoader } from '@react-google-maps/api';
 import type { Location, OptimizedRoute, CaseData, CasePriority, CaseChange, TimeSlot, AgentSettings, AgentChange, ScenarioConfig, ScenarioType } from './types/route';
 import { RouteMap } from './components/RouteMap';
 import { RouteDetails } from './components/RouteDetails';
 import { Header } from './components/Header';
+import { LandingPage } from './components/LandingPage';
 
 // Scenario Definitions
 const SCENARIOS: Record<ScenarioType, ScenarioConfig> = {
@@ -43,6 +44,7 @@ const RouteOptimizer: React.FC = () => {
   const [unallocatedCases, setUnallocatedCases] = useState<Array<CaseData & { unallocatedNumber: number }>>([]);
   const [routesVersion, setRoutesVersion] = useState(0);
   const [optimizedAgentSettings, setOptimizedAgentSettings] = useState<AgentSettings[]>([]);
+  const [isMobile, setIsMobile] = useState(false);
 
   // Store original case data and agent settings for change tracking
   const originalCaseData = useRef<Map<string, { priority: CasePriority; deliverySlot?: TimeSlot }>>(new Map());
@@ -54,6 +56,25 @@ const RouteOptimizer: React.FC = () => {
   const { isLoaded, loadError } = useJsApiLoader({
     googleMapsApiKey: googleMapsApiKey || '',
   });
+
+  // Detect screen size changes
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(max-width: 767px)');
+    
+    const handleScreenChange = (e: MediaQueryListEvent | MediaQueryList) => {
+      setIsMobile(e.matches);
+    };
+
+    // Set initial value
+    setIsMobile(mediaQuery.matches);
+
+    // Listen for changes
+    mediaQuery.addEventListener('change', handleScreenChange);
+
+    return () => {
+      mediaQuery.removeEventListener('change', handleScreenChange);
+    };
+  }, []);
 
   const handlePriorityChange = (caseId: string, newPriority: CasePriority) => {
     const targetCase = cases.find(c => c.id === caseId);
@@ -347,20 +368,15 @@ const RouteOptimizer: React.FC = () => {
       originalCaseData.current = new Map(
         initialCases.map(c => [c.id, { priority: c.priority, deliverySlot: c.deliverySlot }])
       );
-/*
-const agentLocs = scenario.agentPostcodes.map(pc => geocodedLocations.get(pc)).filter(Boolean) as Location[];
-setAgentLocations(agentLocs);
-*/
 
-const agentLocs = scenario.agentPostcodes.map(pc => {
-  const location = geocodedLocations.get(pc);
-  if (!location) {
-    console.warn(`⚠️  Failed to geocode agent postcode: ${pc}`);
-  }
-  return location;
-});
-// DO NOT filter - maintain alignment with undefined values
-setAgentLocations(agentLocs as (Location | undefined)[]);
+      const agentLocs = scenario.agentPostcodes.map(pc => {
+        const location = geocodedLocations.get(pc);
+        if (!location) {
+          console.warn(`⚠️  Failed to geocode agent postcode: ${pc}`);
+        }
+        return location;
+      });
+      setAgentLocations(agentLocs as (Location | undefined)[]);
 
       currentAgentSettings = currentAgentSettings.map(settings => {
         if (settings.finishPostcode) {
@@ -428,12 +444,10 @@ setAgentLocations(agentLocs as (Location | undefined)[]);
           endTime: { seconds: timeToSeconds(settings.endTime) },
         };
 
-        // ✅ Use custom start location if set, otherwise use default
         const startLocation = settings.startLocation 
           ? settings.startLocation 
           : agentLocations[index] || { latitude: 51.5074, longitude: -0.1278 };
 
-        // ✅ Use custom finish location if set, otherwise use start location
         const endLocation = settings.finishLocation
           ? settings.finishLocation
           : startLocation;
@@ -606,15 +620,12 @@ setAgentLocations(agentLocs as (Location | undefined)[]);
       setCases(updatedCases);
       setRoutesVersion(prev => prev + 1);
       
-      // Update optimized agent settings - these are what the map will display
       setOptimizedAgentSettings(currentAgentSettings.map(s => ({ ...s })));
       
-      // Update original case data to reflect the priorities/slots used in this optimization
       originalCaseData.current = new Map(
         updatedCases.map(c => [c.id, { priority: c.priority, deliverySlot: c.deliverySlot }])
       );
       
-      // Update original agent settings to reflect settings used in this optimization
       originalAgentSettings.current = currentAgentSettings.map(s => ({ ...s }));
     } catch (err) {
       console.error('❌ Error:', err);
@@ -635,12 +646,65 @@ setAgentLocations(agentLocs as (Location | undefined)[]);
     );
   }
 
+  // MOBILE VIEW - Shown when screen width < 768px
+  if (isMobile) {
+    return (
+      <div className="flex flex-col h-screen bg-gray-50">
+        <Header />
+        
+        {optimizedRoutes.length === 0 && !loading && (
+          <LandingPage onScenarioSelect={handleScenarioSelect} />
+        )}
+
+        {loading && optimizedRoutes.length === 0 && (
+          <div className="flex-1 flex items-center justify-center bg-gray-50">
+            <div className="text-center px-4">
+              <div className="text-4xl mb-4">⏳</div>
+              <h2 className="text-xl font-bold text-gray-900 mb-2">Geocoding & Optimizing...</h2>
+              <p className="text-gray-600 text-sm">
+                {selectedScenario === 'full'
+                  ? 'Processing 200 cases across 6 agents'
+                  : 'Processing 8 cases across 2 agents'}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {error && (
+          <div className="flex-1 flex items-center justify-center bg-gray-50 p-4">
+            <div className="text-center p-6 bg-white rounded-lg shadow-lg max-w-md w-full">
+              <h2 className="text-xl font-bold text-red-600 mb-4">❌ Error:</h2>
+              <p className="text-gray-700 text-sm">{error}</p>
+            </div>
+          </div>
+        )}
+
+        {optimizedRoutes.length > 0 && (
+          <div className="flex-1 bg-yellow-300 flex items-center justify-center p-8">
+            <div className="text-center max-w-md">
+              <h2 className="text-2xl font-bold text-gray-900 mb-4">
+                📱 Mobile View Coming Soon
+              </h2>
+              <p className="text-gray-800 mb-4">
+                Routes optimized! Mobile interface for viewing routes is under development.
+              </p>
+              <p className="text-sm text-gray-700">
+                Please use a desktop screen (≥768px) to view and manage your optimized routes.
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // DESKTOP VIEW - Existing full interface
   return (
     <div className="flex flex-col h-screen bg-gray-50">
       <Header />
 
       <div className="flex flex-1 overflow-hidden">
-        <div className="flex-1 relative">
+        <div className="flex-1 flex flex-col relative">
           {!googleMapsApiKey && (
             <div className="absolute inset-0 flex items-center justify-center bg-gray-100 z-10">
               <div className="text-center p-8 bg-white rounded-lg shadow-lg max-w-md">
@@ -653,57 +717,7 @@ setAgentLocations(agentLocs as (Location | undefined)[]);
           )}
 
           {optimizedRoutes.length === 0 && !loading && (
-            <div className="absolute inset-0 flex items-center justify-center bg-gray-50 z-10">
-              <div className="max-w-4xl w-full px-8">
-                <h1 className="text-3xl font-bold text-gray-900 mb-8 text-center">
-                  Choose Optimization Scenario
-                </h1>
-
-                <div className="grid md:grid-cols-2 gap-6">
-                  <div className="bg-white rounded-lg shadow-lg p-6 border-2 border-blue-200 hover:border-blue-400 transition-colors">
-                    <h2 className="text-2xl font-bold text-blue-600 mb-4">📊 Full Scenario</h2>
-                    <ul className="space-y-2 mb-6 text-gray-700">
-                      <li>✓ 200 cases across London</li>
-                      <li>✓ 6 agents (W6 9LI, W2 3EL, SE12 4WH, E10 1PI, SE14 5NP, SW15 7GB)</li>
-                      <li>✓ Default hours: 09:00-17:00</li>
-                      <li>✓ 45-minute lunch break</li>
-                      <li>✓ Priority-based optimization</li>
-                      <li>✓ ~1 in 12 cases with delivery slots</li>
-                      <li>✓ Agent 1 finishes at SW1A 1AA</li>
-                    </ul>
-                    <button
-                      onClick={() => handleScenarioSelect('full')}
-                      className="w-full px-6 py-3 text-base font-bold text-white bg-blue-500 border-none rounded cursor-pointer hover:bg-blue-600 transition-colors"
-                    >
-                      🚀 Run Full Scenario
-                    </button>
-                  </div>
-
-                  <div className="bg-white rounded-lg shadow-lg p-6 border-2 border-green-200 hover:border-green-400 transition-colors">
-                    <h2 className="text-2xl font-bold text-green-600 mb-4">📉 Reduced Scenario</h2>
-                    <ul className="space-y-2 mb-6 text-gray-700">
-                      <li>✓ 8 cases across London</li>
-                      <li>✓ 2 agents (W6 9LI, SE14 5NP)</li>
-                      <li>✓ Default hours: 10:30-14:00</li>
-                      <li>✓ 45-minute lunch break</li>
-                      <li>✓ Priority-based optimization</li>
-                      <li>✓ ~1 in 12 cases with delivery slots</li>
-                      <li>✓ Agent 1 finishes at EC1A 1BB</li>
-                    </ul>
-                    <button
-                      onClick={() => handleScenarioSelect('reduced')}
-                      className="w-full px-6 py-3 text-base font-bold text-white bg-green-500 border-none rounded cursor-pointer hover:bg-green-600 transition-colors"
-                    >
-                      🚀 Run Reduced Scenario
-                    </button>
-                  </div>
-                </div>
-
-                <p className="text-center text-sm text-gray-600 mt-6">
-                  All scenarios use real London postcodes and Google Route Optimization API
-                </p>
-              </div>
-            </div>
+            <LandingPage onScenarioSelect={handleScenarioSelect} />
           )}
 
           {loading && optimizedRoutes.length === 0 && (
