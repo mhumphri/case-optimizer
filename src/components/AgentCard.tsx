@@ -1,4 +1,4 @@
-// components/AgentCard.tsx - UPDATED with Reset removed from start location
+// components/AgentCard.tsx - With single-card edit mode
 
 import React, { useState, useEffect } from 'react';
 import type { OptimizedRoute, AgentSettings, CaseData, CasePriority, TimeSlot, Location } from '../types/route';
@@ -67,14 +67,11 @@ export const AgentCard: React.FC<AgentCardProps> = ({
   const [isExpanded, setIsExpanded] = useState(false);
   const [expandedCaseId, setExpandedCaseId] = useState<string | null>(null);
   
-  // State for editing start location
-  const [showStartInput, setShowStartInput] = useState(false);
+  // Single state to track which field is being edited (only one at a time per card)
+  const [editingLocation, setEditingLocation] = useState<'start' | 'finish' | null>(null);
   const [startPostcodeInput, setStartPostcodeInput] = useState('');
-  const [isGeocodingStart, setIsGeocodingStart] = useState(false);
-  
-  // State for editing finish location
-  const [showFinishInput, setShowFinishInput] = useState(false);
   const [finishPostcodeInput, setFinishPostcodeInput] = useState('');
+  const [isGeocodingStart, setIsGeocodingStart] = useState(false);
   const [isGeocodingFinish, setIsGeocodingFinish] = useState(false);
 
   // Extract agent name and default postcode from vehicleLabel
@@ -93,6 +90,7 @@ export const AgentCard: React.FC<AgentCardProps> = ({
     if (!settings.active) {
       setIsExpanded(false);
       setExpandedCaseId(null);
+      setEditingLocation(null); // Close any open edit modes
     }
   }, [settings.active]);
 
@@ -141,7 +139,7 @@ export const AgentCard: React.FC<AgentCardProps> = ({
 
   // Start location handlers
   const handleEditStartClick = () => {
-    setShowStartInput(true);
+    setEditingLocation('start');
     setStartPostcodeInput(displayStartPostcode);
   };
 
@@ -157,7 +155,7 @@ export const AgentCard: React.FC<AgentCardProps> = ({
           startPostcode: startPostcodeInput.trim(),
           startLocation: location,
         });
-        setShowStartInput(false);
+        setEditingLocation(null);
         setStartPostcodeInput('');
       } else {
         alert('Could not geocode postcode. Please check and try again.');
@@ -170,21 +168,19 @@ export const AgentCard: React.FC<AgentCardProps> = ({
     }
   };
 
-  // ❌ REMOVED: handleResetStart function
-
   const handleCancelStartInput = () => {
-    setShowStartInput(false);
+    setEditingLocation(null);
     setStartPostcodeInput('');
   };
 
-  // Finish location handlers with Edit support
+  // Finish location handlers
   const handleAddFinishClick = () => {
-    setShowFinishInput(true);
+    setEditingLocation('finish');
     setFinishPostcodeInput('');
   };
 
   const handleEditFinishClick = () => {
-    setShowFinishInput(true);
+    setEditingLocation('finish');
     setFinishPostcodeInput(settings.finishPostcode || '');
   };
 
@@ -200,7 +196,7 @@ export const AgentCard: React.FC<AgentCardProps> = ({
           finishPostcode: finishPostcodeInput.trim(),
           finishLocation: location,
         });
-        setShowFinishInput(false);
+        setEditingLocation(null);
         setFinishPostcodeInput('');
       } else {
         alert('Could not geocode postcode. Please check and try again.');
@@ -222,7 +218,7 @@ export const AgentCard: React.FC<AgentCardProps> = ({
   };
 
   const handleCancelFinishInput = () => {
-    setShowFinishInput(false);
+    setEditingLocation(null);
     setFinishPostcodeInput('');
   };
 
@@ -265,180 +261,181 @@ export const AgentCard: React.FC<AgentCardProps> = ({
 
       {/* Start Location - Only show when active */}
       {settings.active && (
-        <div className="flex items-center justify-between mb-3">
-          {/* LHS - Home icon and postcode */}
-          <div className="flex items-center gap-2">
-            {!showStartInput && (
-              <>
-                <svg 
-                  width="14" 
-                  height="14" 
-                  viewBox="0 0 24 24" 
-                  fill="none" 
-                  stroke="currentColor" 
-                  strokeWidth="2" 
-                  strokeLinecap="round" 
-                  strokeLinejoin="round"
-                  className="text-gray-600"
-                >
-                  <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-                  <polyline points="9 22 9 12 15 12 15 22"></polyline>
-                </svg>
-                <span className="text-sm text-gray-700">{displayStartPostcode}</span>
-              </>
-            )}
-            {showStartInput && (
-              <div className="flex items-center gap-2">
-                <svg 
-                  width="14" 
-                  height="14" 
-                  viewBox="0 0 24 24" 
-                  fill="none" 
-                  stroke="currentColor" 
-                  strokeWidth="2" 
-                  strokeLinecap="round" 
-                  strokeLinejoin="round"
-                  className="text-gray-600"
-                >
-                  <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-                  <polyline points="9 22 9 12 15 12 15 22"></polyline>
-                </svg>
-                <input
-                  type="text"
-                  value={startPostcodeInput}
-                  onChange={(e) => setStartPostcodeInput(e.target.value)}
-                  placeholder="Enter postcode"
-                  className="text-xs border border-gray-300 rounded px-2 py-1 w-32"
-                  onKeyPress={(e) => {
-                    if (e.key === 'Enter') handleUpdateStart();
-                  }}
-                  disabled={isGeocodingStart}
-                />
-                <button
-                  onClick={handleUpdateStart}
-                  disabled={isGeocodingStart || !startPostcodeInput.trim()}
-                  className="text-xs px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
-                >
-                  {isGeocodingStart ? '...' : 'Update'}
-                </button>
-                <button
-                  onClick={handleCancelStartInput}
-                  disabled={isGeocodingStart}
-                  className="text-xs px-2 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 disabled:bg-gray-100 disabled:cursor-not-allowed"
-                >
-                  Cancel
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* RHS - Edit button only (Reset removed) */}
-          <div className="ml-auto">
-            {!showStartInput && (
+        <div className="flex items-center mb-3">
+          {editingLocation !== 'start' && (
+            <div className="flex items-center gap-2">
+              <svg 
+                width="14" 
+                height="14" 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                stroke="currentColor" 
+                strokeWidth="2" 
+                strokeLinecap="round" 
+                strokeLinejoin="round"
+                className="text-gray-600"
+              >
+                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                <polyline points="9 22 9 12 15 12 15 22"></polyline>
+              </svg>
+              <span className="text-sm text-gray-700">{displayStartPostcode}</span>
               <button
                 onClick={handleEditStartClick}
-                className="text-xs text-blue-600 hover:text-blue-700 font-medium cursor-pointer"
+                className="text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1"
+                title="Edit start location"
               >
-                Edit
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                </svg>
+                <span>Edit</span>
               </button>
-            )}
-          </div>
+            </div>
+          )}
+          {editingLocation === 'start' && (
+            <div className="flex items-center gap-2">
+              <svg 
+                width="14" 
+                height="14" 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                stroke="currentColor" 
+                strokeWidth="2" 
+                strokeLinecap="round" 
+                strokeLinejoin="round"
+                className="text-gray-600"
+              >
+                <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                <polyline points="9 22 9 12 15 12 15 22"></polyline>
+              </svg>
+              <input
+                type="text"
+                value={startPostcodeInput}
+                onChange={(e) => setStartPostcodeInput(e.target.value)}
+                placeholder="Enter postcode"
+                className="text-xs border border-gray-300 rounded px-2 py-1 w-32"
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter') handleUpdateStart();
+                }}
+                disabled={isGeocodingStart}
+              />
+              <button
+                onClick={handleUpdateStart}
+                disabled={isGeocodingStart || !startPostcodeInput.trim()}
+                className="text-xs px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
+              >
+                {isGeocodingStart ? '...' : 'Update'}
+              </button>
+              <button
+                onClick={handleCancelStartInput}
+                disabled={isGeocodingStart}
+                className="text-xs px-2 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 disabled:bg-gray-100 disabled:cursor-not-allowed"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
         </div>
       )}
 
       {/* Finish Location - Only show when active */}
       {settings.active && (
         <div className="flex items-center justify-between mb-3">
-          {/* LHS - Chequered flag icon and postcode (if finish location exists) */}
-          <div className="flex items-center gap-2">
-            {settings.finishPostcode && !showFinishInput && (
-              <>
-                <svg 
-                  width="14" 
-                  height="14" 
-                  viewBox="0 0 24 24" 
-                  fill="none" 
-                  stroke="currentColor" 
-                  strokeWidth="2" 
-                  strokeLinecap="round" 
-                  strokeLinejoin="round"
-                  className="text-gray-600"
-                >
-                  <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path>
-                  <line x1="4" y1="22" x2="4" y2="15"></line>
-                </svg>
-                <span className="text-sm text-gray-700">{settings.finishPostcode}</span>
-              </>
-            )}
-            {showFinishInput && (
-              <>
-                <svg 
-                  width="14" 
-                  height="14" 
-                  viewBox="0 0 24 24" 
-                  fill="none" 
-                  stroke="currentColor" 
-                  strokeWidth="2" 
-                  strokeLinecap="round" 
-                  strokeLinejoin="round"
-                  className="text-gray-600"
-                >
-                  <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path>
-                  <line x1="4" y1="22" x2="4" y2="15"></line>
-                </svg>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={finishPostcodeInput}
-                    onChange={(e) => setFinishPostcodeInput(e.target.value)}
-                    placeholder="Enter postcode"
-                    className="text-xs border border-gray-300 rounded px-2 py-1 w-32"
-                    onKeyPress={(e) => {
-                      if (e.key === 'Enter') handleUpdateFinish();
-                    }}
-                    disabled={isGeocodingFinish}
-                  />
-                  <button
-                    onClick={handleUpdateFinish}
-                    disabled={isGeocodingFinish || !finishPostcodeInput.trim()}
-                    className="text-xs px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
-                  >
-                    {isGeocodingFinish ? '...' : settings.finishPostcode ? 'Update' : 'Add'}
-                  </button>
-                  <button
-                    onClick={handleCancelFinishInput}
-                    disabled={isGeocodingFinish}
-                    className="text-xs px-2 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 disabled:bg-gray-100 disabled:cursor-not-allowed"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* RHS - Add/Edit/Remove buttons */}
-          <div className="ml-auto">
-            {!settings.finishPostcode && !showFinishInput && (
-              <button
-                onClick={handleAddFinishClick}
-                className="text-xs text-blue-600 hover:text-blue-700 font-medium cursor-pointer"
-              >
-                + Add Finish
-              </button>
-            )}
-
-            {settings.finishPostcode && !showFinishInput && (
+          {editingLocation !== 'finish' && (
+            <>
               <div className="flex items-center gap-2">
-                <button
-                  onClick={handleEditFinishClick}
-                  className="text-xs text-blue-600 hover:text-blue-700 font-medium cursor-pointer"
-                >
-                  Edit
-                </button>
+                {settings.finishPostcode ? (
+                  <>
+                    <svg 
+                      width="14" 
+                      height="14" 
+                      viewBox="0 0 24 24" 
+                      fill="none" 
+                      stroke="currentColor" 
+                      strokeWidth="2" 
+                      strokeLinecap="round" 
+                      strokeLinejoin="round"
+                      className="text-gray-600"
+                    >
+                      <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path>
+                      <line x1="4" y1="22" x2="4" y2="15"></line>
+                    </svg>
+                    <span className="text-sm text-gray-700">{settings.finishPostcode}</span>
+                    <button
+                      onClick={handleEditFinishClick}
+                      className="text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1"
+                      title="Edit finish location"
+                    >
+                      <svg
+                        width="12"
+                        height="12"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                      </svg>
+                      <span>Edit</span>
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <svg 
+                      width="14" 
+                      height="14" 
+                      viewBox="0 0 24 24" 
+                      fill="none" 
+                      stroke="currentColor" 
+                      strokeWidth="2" 
+                      strokeLinecap="round" 
+                      strokeLinejoin="round"
+                      className="text-gray-600"
+                    >
+                      <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path>
+                      <line x1="4" y1="22" x2="4" y2="15"></line>
+                    </svg>
+                    <button
+                      onClick={handleAddFinishClick}
+                      className="text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1"
+                    >
+                      <svg
+                        width="12"
+                        height="12"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                      </svg>
+                      <span>Add Finish</span>
+                    </button>
+                  </>
+                )}
+              </div>
+
+              {/* Remove button - only show when finish postcode exists */}
+              {settings.finishPostcode && (
                 <button
                   onClick={handleRemoveFinish}
-                  className="flex items-center gap-1 text-[10px] text-gray-500 hover:text-gray-700 cursor-pointer"
+                  className="text-xs text-gray-500 hover:text-gray-700 ml-auto flex items-center gap-1"
+                  title="Remove finish location"
                 >
                   <span>Remove</span>
                   <svg 
@@ -456,9 +453,52 @@ export const AgentCard: React.FC<AgentCardProps> = ({
                     <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
                   </svg>
                 </button>
-              </div>
-            )}
-          </div>
+              )}
+            </>
+          )}
+          {editingLocation === 'finish' && (
+            <div className="flex items-center gap-2">
+              <svg 
+                width="14" 
+                height="14" 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                stroke="currentColor" 
+                strokeWidth="2" 
+                strokeLinecap="round" 
+                strokeLinejoin="round"
+                className="text-gray-600"
+              >
+                <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"></path>
+                <line x1="4" y1="22" x2="4" y2="15"></line>
+              </svg>
+              <input
+                type="text"
+                value={finishPostcodeInput}
+                onChange={(e) => setFinishPostcodeInput(e.target.value)}
+                placeholder="Enter postcode"
+                className="text-xs border border-gray-300 rounded px-2 py-1 w-32"
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter') handleUpdateFinish();
+                }}
+                disabled={isGeocodingFinish}
+              />
+              <button
+                onClick={handleUpdateFinish}
+                disabled={isGeocodingFinish || !finishPostcodeInput.trim()}
+                className="text-xs px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
+              >
+                {isGeocodingFinish ? '...' : settings.finishPostcode ? 'Update' : 'Add'}
+              </button>
+              <button
+                onClick={handleCancelFinishInput}
+                disabled={isGeocodingFinish}
+                className="text-xs px-2 py-1 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 disabled:bg-gray-100 disabled:cursor-not-allowed"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
         </div>
       )}
 

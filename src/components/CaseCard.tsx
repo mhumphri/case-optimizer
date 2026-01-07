@@ -91,13 +91,13 @@ export const CaseCard: React.FC<CaseCardProps> = ({
           {unallocatedNumber !== null && (
             <div className="relative shrink-0">
               <div 
-                className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold bg-gray-600"
+                className="w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold bg-[#7A808C]"
                 style={{
                   ...(isHighPriority ? {
                     border: '3px solid white',
                     outlineWidth: '2px',
                     outlineStyle: 'solid',
-                    outlineColor: '#6b7280',
+                    outlineColor: '#7A808C',
                   } : {})
                 }}
               >
@@ -112,7 +112,7 @@ export const CaseCard: React.FC<CaseCardProps> = ({
           )}
           
           {/* Agent Label - regular color */}
-          <span className="text-sm font-semibold text-gray-900">
+          <span className="text-sm font-semibold text-gray-600">
             {formattedAgentLabel}
           </span>
         </div>
