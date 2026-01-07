@@ -65,6 +65,19 @@ export const CaseController: React.FC<CaseControllerProps> = ({
   const [caseFilter, setCaseFilter] = useState<CaseFilter>('all');
   const [changesExpanded, setChangesExpanded] = useState(false);
 
+  // Scroll position tracking for mobile views
+  const [scrollPositions, setScrollPositions] = useState<{
+    agents: number;
+    cases: number;
+  }>({
+    agents: 0,
+    cases: 0,
+  });
+
+  // Refs for scrollable containers
+  const agentsScrollRef = React.useRef<HTMLDivElement>(null);
+  const casesScrollRef = React.useRef<HTMLDivElement>(null);
+
   // Calculate filter counts for mobile
   const agentCounts = React.useMemo(() => {
     const active = routes.filter((_, index) => {
@@ -94,6 +107,19 @@ export const CaseController: React.FC<CaseControllerProps> = ({
 
   // Collapse ChangesPanel when view changes
   const handleViewChange = (view: MobileView) => {
+    // Save current scroll position before switching
+    if (activeView === 'agents' && agentsScrollRef.current) {
+      setScrollPositions(prev => ({
+        ...prev,
+        agents: agentsScrollRef.current!.scrollTop,
+      }));
+    } else if (activeView === 'cases' && casesScrollRef.current) {
+      setScrollPositions(prev => ({
+        ...prev,
+        cases: casesScrollRef.current!.scrollTop,
+      }));
+    }
+
     setActiveView(view);
     setChangesExpanded(false);
   };
@@ -107,6 +133,27 @@ export const CaseController: React.FC<CaseControllerProps> = ({
       setChangesExpanded(false);
     }
   }, [shouldShowChangesPanel, changesExpanded]);
+
+  // Restore scroll position when view becomes active
+  useEffect(() => {
+    if (isMobile) {
+      if (activeView === 'agents' && agentsScrollRef.current) {
+        agentsScrollRef.current.scrollTop = scrollPositions.agents;
+      } else if (activeView === 'cases' && casesScrollRef.current) {
+        casesScrollRef.current.scrollTop = scrollPositions.cases;
+      }
+    }
+  }, [activeView, isMobile, scrollPositions]);
+
+  // Reset scroll positions when routes are recalculated
+  useEffect(() => {
+    if (isMobile) {
+      setScrollPositions({
+        agents: 0,
+        cases: 0,
+      });
+    }
+  }, [routesVersion, isMobile]);
 
   // Mobile View
   if (isMobile) {
@@ -177,7 +224,11 @@ export const CaseController: React.FC<CaseControllerProps> = ({
                   </select>
                 </div>
               </div>
-              <div className="flex-1 overflow-y-auto p-4" style={{ paddingBottom: shouldShowChangesPanel ? '130px' : '1rem' }}>
+              <div 
+                ref={agentsScrollRef}
+                className="flex-1 overflow-y-auto p-4" 
+                style={{ paddingBottom: shouldShowChangesPanel ? '130px' : '1rem' }}
+              >
                 <AgentList
                   routes={routes}
                   agentSettings={agentSettings}
@@ -211,7 +262,11 @@ export const CaseController: React.FC<CaseControllerProps> = ({
                   </select>
                 </div>
               </div>
-              <div className="flex-1 overflow-y-auto p-4" style={{ paddingBottom: shouldShowChangesPanel ? '130px' : '1rem' }}>
+              <div 
+                ref={casesScrollRef}
+                className="flex-1 overflow-y-auto p-4" 
+                style={{ paddingBottom: shouldShowChangesPanel ? '130px' : '1rem' }}
+              >
                 <CaseList
                   cases={cases}
                   routes={routes}
