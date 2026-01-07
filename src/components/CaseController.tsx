@@ -177,7 +177,7 @@ export const CaseController: React.FC<CaseControllerProps> = ({
                   </select>
                 </div>
               </div>
-              <div className="flex-1 overflow-y-auto p-4">
+              <div className="flex-1 overflow-y-auto p-4" style={{ paddingBottom: shouldShowChangesPanel ? '130px' : '1rem' }}>
                 <AgentList
                   routes={routes}
                   agentSettings={agentSettings}
@@ -211,7 +211,7 @@ export const CaseController: React.FC<CaseControllerProps> = ({
                   </select>
                 </div>
               </div>
-              <div className="flex-1 overflow-y-auto p-4">
+              <div className="flex-1 overflow-y-auto p-4" style={{ paddingBottom: shouldShowChangesPanel ? '130px' : '1rem' }}>
                 <CaseList
                   cases={cases}
                   routes={routes}
