@@ -1,10 +1,11 @@
 // components/CaseController.tsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { Location, OptimizedRoute, CaseData, CasePriority, CaseChange, TimeSlot, AgentSettings, AgentChange } from '../types/route';
 import { RouteMap } from './RouteMap';
 import { RouteDetails } from './RouteDetails';
 import { AgentList } from './AgentList';
 import { CaseList } from './CaseList';
+import { ChangesPanel } from './ChangesPanel';
 
 interface CaseControllerProps {
   routes: OptimizedRoute[];
@@ -62,6 +63,7 @@ export const CaseController: React.FC<CaseControllerProps> = ({
   const [activeView, setActiveView] = useState<MobileView>('map');
   const [agentFilter, setAgentFilter] = useState<AgentFilter>('all');
   const [caseFilter, setCaseFilter] = useState<CaseFilter>('all');
+  const [changesExpanded, setChangesExpanded] = useState(false);
 
   // Calculate filter counts for mobile
   const agentCounts = React.useMemo(() => {
@@ -89,6 +91,22 @@ export const CaseController: React.FC<CaseControllerProps> = ({
       unallocated,
     };
   }, [cases]);
+
+  // Collapse ChangesPanel when view changes
+  const handleViewChange = (view: MobileView) => {
+    setActiveView(view);
+    setChangesExpanded(false);
+  };
+
+  const totalChanges = caseChanges.length + agentChanges.length;
+  const shouldShowChangesPanel = totalChanges > 0 || isRecalculating;
+
+  // Collapse ChangesPanel when no changes exist
+  useEffect(() => {
+    if (!shouldShowChangesPanel && changesExpanded) {
+      setChangesExpanded(false);
+    }
+  }, [shouldShowChangesPanel, changesExpanded]);
 
   // Mobile View
   if (isMobile) {
@@ -205,12 +223,30 @@ export const CaseController: React.FC<CaseControllerProps> = ({
               </div>
             </div>
           )}
+
+          {/* Changes Panel Overlay */}
+          {shouldShowChangesPanel && (
+            <div className={`absolute left-0 right-0 bg-white z-30 ${
+              changesExpanded ? 'inset-0' : 'bottom-0'
+            }`}>
+              <ChangesPanel
+                caseChanges={caseChanges}
+                agentChanges={agentChanges}
+                onRecalculate={onRecalculate}
+                onDeleteCaseChange={onDeleteCaseChange}
+                onDeleteAgentChange={onDeleteAgentChange}
+                isRecalculating={isRecalculating}
+                isExpanded={changesExpanded}
+                onToggleExpanded={setChangesExpanded}
+              />
+            </div>
+          )}
         </div>
 
         {/* Bottom Navigation Bar */}
         <div className="shrink-0 bg-white border-t border-gray-300 flex">
           <button
-            onClick={() => setActiveView('map')}
+            onClick={() => handleViewChange('map')}
             className={`flex-1 py-4 px-2 flex flex-col items-center justify-center border-none cursor-pointer transition-colors ${
               activeView === 'map'
                 ? 'bg-blue-50 text-blue-600'
@@ -236,7 +272,7 @@ export const CaseController: React.FC<CaseControllerProps> = ({
           </button>
 
           <button
-            onClick={() => setActiveView('agents')}
+            onClick={() => handleViewChange('agents')}
             className={`flex-1 py-4 px-2 flex flex-col items-center justify-center border-none cursor-pointer transition-colors ${
               activeView === 'agents'
                 ? 'bg-blue-50 text-blue-600'
@@ -257,7 +293,7 @@ export const CaseController: React.FC<CaseControllerProps> = ({
           </button>
 
           <button
-            onClick={() => setActiveView('cases')}
+            onClick={() => handleViewChange('cases')}
             className={`flex-1 py-4 px-2 flex flex-col items-center justify-center border-none cursor-pointer transition-colors ${
               activeView === 'cases'
                 ? 'bg-blue-50 text-blue-600'
