@@ -1,4 +1,4 @@
-// RouteMap.tsx - COMPLETE FILE with editable start location support
+// RouteMap.tsx - FIXED: Agent marker rendering now properly aligned
 import React, { useState, useEffect, useRef } from 'react';
 import { GoogleMap, Marker, Polyline, InfoWindow, OverlayView } from '@react-google-maps/api';
 import type { Location, OptimizedRoute, CaseData, AgentSettings, CasePriority, TimeSlot } from '../types/route';
@@ -165,9 +165,10 @@ export const RouteMap: React.FC<RouteMapProps> = ({
       const bounds = new google.maps.LatLngBounds();
       let hasPoints = false;
 
-      // ✅ Add agent locations (use custom start if available)
-      agentLocations.forEach((defaultLocation, index) => {
+      // ✅ FIXED: Iterate over routes to maintain proper alignment with agentSettings
+      routes.forEach((route, index) => {
         const settings = agentSettings[index];
+        const defaultLocation = agentLocations[index];
         const startLocation = settings?.startLocation || defaultLocation;
         
         if (startLocation) {
@@ -383,12 +384,13 @@ export const RouteMap: React.FC<RouteMapProps> = ({
         disableDefaultUI: false,
       }}
     >
-      {/* Agent Start Markers */}
-      {agentLocations.map((defaultLocation, index) => {
+      {/* Agent Start Markers - FIXED: Now iterates over routes to maintain alignment */}
+      {routes.map((route, index) => {
         const color = ROUTE_COLORS[index % ROUTE_COLORS.length];
-        
-        // ✅ Use custom start location from settings if available
         const settings = agentSettings[index];
+        const defaultLocation = agentLocations[index];
+        
+        // ✅ Use custom start location from settings if available, otherwise use default
         const startLocation = settings?.startLocation || defaultLocation;
         
         if (!startLocation) return null;

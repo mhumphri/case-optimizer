@@ -21,12 +21,12 @@ const SCENARIOS: Record<ScenarioType, ScenarioConfig> = {
   reduced: {
     name: 'Reduced Scenario',
     description: '8 cases across 2 agents',
-    caseCount: 8,
-    agentPostcodes: ['W6 9LI', 'SE14 5NP'],
+    caseCount: 10,
+    agentPostcodes: ['W1A 1AA', 'SE14 5NP', 'SW1P 4DR'],
     defaultStartTime: '10:30',
     defaultEndTime: '14:00',
     defaultLunchDuration: 45,
-    agentFinishPostcodes: ['EC1A 1BB', undefined],
+    agentFinishPostcodes: ['EC1A 1BB', 'N1 9GU', 'W12 7GF'],
   },
 };
 
@@ -347,9 +347,20 @@ const RouteOptimizer: React.FC = () => {
       originalCaseData.current = new Map(
         initialCases.map(c => [c.id, { priority: c.priority, deliverySlot: c.deliverySlot }])
       );
+/*
+const agentLocs = scenario.agentPostcodes.map(pc => geocodedLocations.get(pc)).filter(Boolean) as Location[];
+setAgentLocations(agentLocs);
+*/
 
-      const agentLocs = scenario.agentPostcodes.map(pc => geocodedLocations.get(pc)).filter(Boolean) as Location[];
-      setAgentLocations(agentLocs);
+const agentLocs = scenario.agentPostcodes.map(pc => {
+  const location = geocodedLocations.get(pc);
+  if (!location) {
+    console.warn(`⚠️  Failed to geocode agent postcode: ${pc}`);
+  }
+  return location;
+});
+// DO NOT filter - maintain alignment with undefined values
+setAgentLocations(agentLocs as (Location | undefined)[]);
 
       currentAgentSettings = currentAgentSettings.map(settings => {
         if (settings.finishPostcode) {
