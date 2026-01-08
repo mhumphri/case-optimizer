@@ -24,11 +24,11 @@ const SCENARIOS: Record<ScenarioType, ScenarioConfig> = {
     name: 'Reduced Scenario',
     description: '8 cases across 2 agents',
     caseCount: 8,
-    agentPostcodes: ["SE18 6AA", 'SE14 5NP',"SE1 0AA",],
-    defaultStartTime: '09:30',
+    agentPostcodes: ['W1A 1AA', 'SE14 5NP','SW1P 4DR'],
+    defaultStartTime: '10:30',
     defaultEndTime: '14:00',
     defaultLunchDuration: 45,
-    agentFinishPostcodes: ["SW1P 4DR", undefined, undefined],
+    agentFinishPostcodes: ['EC1A 1BB', undefined, undefined],
   },
 };
 
@@ -829,7 +829,7 @@ const RouteOptimizer: React.FC = () => {
   // MOBILE VIEW - Shown when screen width < 768px
   if (isMobile) {
     return (
-      <div className="flex flex-col h-screen bg-gray-50">
+      <div className="flex flex-col bg-gray-50" style={{ height: '100dvh', minHeight: '-webkit-fill-available' }}>
         <Header onReset={handleReset} showReset={optimizedRoutes.length > 0} />
         
         {optimizedRoutes.length === 0 && !loading && (

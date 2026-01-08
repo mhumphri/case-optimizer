@@ -311,7 +311,7 @@ export const CaseController: React.FC<CaseControllerProps> = ({
         </div>
 
         {/* Bottom Navigation Bar */}
-        <div className="shrink-0 bg-white border-t border-gray-300 flex">
+        <div className="shrink-0 bg-white border-t border-gray-300 flex" style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
           <button
             onClick={() => handleViewChange('map')}
             className={`flex-1 py-4 px-2 flex flex-col items-center justify-center border-none cursor-pointer transition-colors ${
