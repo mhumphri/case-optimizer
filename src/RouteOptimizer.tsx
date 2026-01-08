@@ -683,7 +683,7 @@ const RouteOptimizer: React.FC = () => {
 
       //http://localhost:3001/api/optimize-routes
       //https://applied-plexus-360100.nw.r.appspot.com/api/optimize-routes
-      const response = await fetch('https://applied-plexus-360100.nw.r.appspot.com/api/zzz', {
+      const response = await fetch('https://applied-plexus-360100.nw.r.appspot.com/api/optimize-routes', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
