@@ -6,6 +6,7 @@ import { Header } from './components/Header';
 import { LandingPage } from './components/LandingPage';
 import { CaseController } from './components/CaseController';
 import { CompletionModal } from './components/CompletionModal';
+import { Toast } from './components/Toast';
 
 // Scenario Definitions
 const SCENARIOS: Record<ScenarioType, ScenarioConfig> = {
@@ -53,6 +54,7 @@ const RouteOptimizer: React.FC = () => {
     unallocatedCases: 0,
     timeWindow: { start: '09:00', end: '17:00' },
   });
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Store original case data and agent settings for change tracking
   const originalCaseData = useRef<Map<string, { priority: CasePriority; deliverySlot?: TimeSlot }>>(new Map());
@@ -267,6 +269,7 @@ const RouteOptimizer: React.FC = () => {
     setSelectedScenario(null);
     setError('');
     setShowCompletionModal(false);
+    setToastMessage(null);
     
     // Clear refs
     originalCaseData.current = new Map();
@@ -281,6 +284,7 @@ const RouteOptimizer: React.FC = () => {
       setAgentChanges([]);
     } catch (error) {
       console.error('Recalculation failed:', error);
+      setToastMessage(error instanceof Error ? error.message : 'Recalculation failed');
     }
   };
 
@@ -305,6 +309,15 @@ const RouteOptimizer: React.FC = () => {
     if (!existingCases) {
       setCaseChanges([]);
       setAgentChanges([]);
+    }
+
+    // Validate at least one active agent
+    const settingsToCheck = existingAgentSettings || agentSettings;
+    const activeAgentsCount = settingsToCheck.filter(s => s.active).length;
+    if (activeAgentsCount === 0 && existingCases) {
+      setToastMessage('Please activate at least one agent before recalculating routes');
+      setLoading(false);
+      return;
     }
 
     const { generateMultiplePostcodes, timeToSeconds } = await import('./utils/locationGenerator');
@@ -343,6 +356,51 @@ const RouteOptimizer: React.FC = () => {
           console.log(`    Finish: ${change.oldSettings.finishPostcode || 'None'} → ${change.newSettings.finishPostcode || 'None'}`);
         }
       });
+
+      // Geocode any custom agent locations that don't have coordinates yet
+      const customPostcodes = new Set<string>();
+      currentAgentSettings.forEach(settings => {
+        if (settings.startPostcode && !settings.startLocation) {
+          customPostcodes.add(settings.startPostcode);
+        }
+        if (settings.finishPostcode && !settings.finishLocation) {
+          customPostcodes.add(settings.finishPostcode);
+        }
+      });
+
+      if (customPostcodes.size > 0) {
+        console.log(`🌍 Geocoding ${customPostcodes.size} custom agent locations...`);
+        const customLocations = await geocodePostcodes(Array.from(customPostcodes));
+        
+        const failedCustomLocations: string[] = [];
+        currentAgentSettings = currentAgentSettings.map(settings => {
+          const updated = { ...settings };
+          
+          if (settings.startPostcode && !settings.startLocation) {
+            const location = customLocations.get(settings.startPostcode);
+            if (location) {
+              updated.startLocation = location;
+            } else {
+              failedCustomLocations.push(`Start: ${settings.startPostcode}`);
+            }
+          }
+          
+          if (settings.finishPostcode && !settings.finishLocation) {
+            const location = customLocations.get(settings.finishPostcode);
+            if (location) {
+              updated.finishLocation = location;
+            } else {
+              failedCustomLocations.push(`Finish: ${settings.finishPostcode}`);
+            }
+          }
+          
+          return updated;
+        });
+
+        if (failedCustomLocations.length > 0) {
+          setToastMessage(`Warning: Failed to geocode ${failedCustomLocations.length} agent location(s): ${failedCustomLocations.join(', ')}`);
+        }
+      }
     } else {
       console.log(`📍 Generating ${scenario.caseCount} unique cases from real postcodes...`);
       console.log(`  Scenario: ${scenario.name}`);
@@ -405,25 +463,51 @@ const RouteOptimizer: React.FC = () => {
         }
         return location;
       });
+      
+      const failedAgentLocations: string[] = [];
+      scenario.agentPostcodes.forEach((pc, index) => {
+        if (!geocodedLocations.get(pc)) {
+          failedAgentLocations.push(`Agent ${index + 1} start: ${pc}`);
+        }
+      });
+      
       setAgentLocations(agentLocs as (Location | undefined)[]);
 
-      currentAgentSettings = currentAgentSettings.map(settings => {
+      currentAgentSettings = currentAgentSettings.map((settings, index) => {
         if (settings.finishPostcode) {
+          const finishLocation = geocodedLocations.get(settings.finishPostcode);
+          if (!finishLocation) {
+            console.warn(`⚠️  Failed to geocode agent finish location: ${settings.finishPostcode}`);
+            failedAgentLocations.push(`Agent ${index + 1} finish: ${settings.finishPostcode}`);
+          }
           return {
             ...settings,
-            finishLocation: geocodedLocations.get(settings.finishPostcode),
+            finishLocation,
           };
         }
         return settings;
       });
+      
+      if (failedAgentLocations.length > 0) {
+        setToastMessage(`Warning: Failed to geocode ${failedAgentLocations.length} agent location(s): ${failedAgentLocations.join(', ')}`);
+      }
 
       setAgentSettings(currentAgentSettings);
       originalAgentSettings.current = currentAgentSettings.map(s => ({ ...s }));
     }
 
     const casesWithCoords = initialCases.filter(c => c.location);
-    if (casesWithCoords.length < initialCases.length) {
-      console.warn(`⚠️ ${initialCases.length - casesWithCoords.length} cases failed to geocode and will be skipped`);
+    const failedGeocodesCount = initialCases.length - casesWithCoords.length;
+    
+    if (casesWithCoords.length === 0) {
+      setToastMessage('Error: No cases could be geocoded. Cannot proceed with optimization.');
+      setLoading(false);
+      return;
+    }
+    
+    if (failedGeocodesCount > 0) {
+      console.warn(`⚠️ ${failedGeocodesCount} cases failed to geocode and will be skipped`);
+      setToastMessage(`Warning: ${failedGeocodesCount} of ${initialCases.length} case(s) could not be geocoded and were excluded`);
     }
 
     const shipments = casesWithCoords.map((caseData) => {
@@ -564,7 +648,7 @@ const RouteOptimizer: React.FC = () => {
 
       //http://localhost:3001/api/optimize-routes
       //https://applied-plexus-360100.nw.r.appspot.com/api/optimize-routes
-      const response = await fetch('http://localhost:3001/api/optimize-routes', {
+      const response = await fetch('https://applied-plexus-360100.nw.r.appspot.com/zzzz', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -685,7 +769,7 @@ const RouteOptimizer: React.FC = () => {
       setShowCompletionModal(true);
     } catch (err) {
       console.error('❌ Error:', err);
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      setToastMessage(err instanceof Error ? err.message : 'An error occurred during optimization');
     } finally {
       setLoading(false);
     }
@@ -726,15 +810,6 @@ const RouteOptimizer: React.FC = () => {
           </div>
         )}
 
-        {error && (
-          <div className="flex-1 flex items-center justify-center bg-gray-50 p-4">
-            <div className="text-center p-6 bg-white rounded-lg shadow-lg max-w-md w-full">
-              <h2 className="text-xl font-bold text-red-600 mb-4">❌ Error:</h2>
-              <p className="text-gray-700 text-sm">{error}</p>
-            </div>
-          </div>
-        )}
-
         {optimizedRoutes.length > 0 && (
           <CaseController
             routes={optimizedRoutes}
@@ -757,7 +832,6 @@ const RouteOptimizer: React.FC = () => {
             isRecalculating={loading}
             googleMapsApiKey={googleMapsApiKey}
             isLoaded={isLoaded}
-            error={error}
             isMobile={true}
           />
         )}
@@ -771,6 +845,14 @@ const RouteOptimizer: React.FC = () => {
           unallocatedCases={completionSummary.unallocatedCases}
           timeWindow={completionSummary.timeWindow}
         />
+
+        {toastMessage && (
+          <Toast
+            message={toastMessage}
+            type="error"
+            onClose={() => setToastMessage(null)}
+          />
+        )}
       </div>
     );
   }
@@ -823,7 +905,6 @@ const RouteOptimizer: React.FC = () => {
           isRecalculating={loading}
           googleMapsApiKey={googleMapsApiKey}
           isLoaded={isLoaded}
-          error={error}
           isMobile={false}
         />
       )}
@@ -837,6 +918,14 @@ const RouteOptimizer: React.FC = () => {
         unallocatedCases={completionSummary.unallocatedCases}
         timeWindow={completionSummary.timeWindow}
       />
+
+      {toastMessage && (
+        <Toast
+          message={toastMessage}
+          type="error"
+          onClose={() => setToastMessage(null)}
+        />
+      )}
     </div>
   );
 };

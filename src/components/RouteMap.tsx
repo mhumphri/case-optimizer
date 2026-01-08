@@ -390,6 +390,9 @@ export const RouteMap: React.FC<RouteMapProps> = ({
         const settings = agentSettings[index];
         const defaultLocation = agentLocations[index];
         
+        // Only render marker if agent is active
+        if (!settings?.active) return null;
+        
         // ✅ Use custom start location from settings if available, otherwise use default
         const startLocation = settings?.startLocation || defaultLocation;
         
@@ -411,7 +414,8 @@ export const RouteMap: React.FC<RouteMapProps> = ({
 
       {/* Agent Finish Markers */}
       {agentSettings.map((settings, index) => {
-        if (!settings.finishLocation) return null;
+        // Only render marker if agent is active and has a finish location
+        if (!settings.active || !settings.finishLocation) return null;
         
         const color = ROUTE_COLORS[index % ROUTE_COLORS.length];
         return (
@@ -532,6 +536,10 @@ export const RouteMap: React.FC<RouteMapProps> = ({
 
       {/* Route Polylines for all agents */}
       {routes.map((route, index) => {
+        const settings = agentSettings[index];
+        
+        // Only render polyline if agent is active
+        if (!settings?.active) return null;
         if (!agentLocations[index] || route.visits.length === 0) return null;
 
         const path = getRoutePath(route, agentLocations[index], index);

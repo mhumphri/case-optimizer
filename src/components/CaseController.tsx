@@ -28,7 +28,6 @@ interface CaseControllerProps {
   isRecalculating: boolean;
   googleMapsApiKey: string | undefined;
   isLoaded: boolean;
-  error?: string;
   isMobile?: boolean;
 }
 
@@ -57,7 +56,6 @@ export const CaseController: React.FC<CaseControllerProps> = ({
   isRecalculating,
   googleMapsApiKey,
   isLoaded,
-  error,
   isMobile = false,
 }) => {
   const [activeView, setActiveView] = useState<MobileView>('map');
@@ -181,18 +179,8 @@ export const CaseController: React.FC<CaseControllerProps> = ({
             </div>
           )}
 
-          {/* Error State */}
-          {error && (
-            <div className="absolute inset-0 flex items-center justify-center bg-gray-50 z-10">
-              <div className="text-center p-6 bg-white rounded-lg shadow-lg max-w-sm mx-4">
-                <h2 className="text-lg font-bold text-red-600 mb-3">❌ Error</h2>
-                <p className="text-sm text-gray-700">{error}</p>
-              </div>
-            </div>
-          )}
-
           {/* RouteMap - Always Rendered */}
-          {!error && googleMapsApiKey && isLoaded && (
+          {googleMapsApiKey && isLoaded && (
             <div className="w-full h-full">
               <RouteMap
                 routes={routes}
@@ -400,18 +388,8 @@ export const CaseController: React.FC<CaseControllerProps> = ({
           </div>
         )}
 
-        {/* Error State */}
-        {error && (
-          <div className="absolute inset-0 flex items-center justify-center bg-gray-50 z-10">
-            <div className="text-center p-8 bg-white rounded-lg shadow-lg max-w-md">
-              <h2 className="text-xl font-bold text-red-600 mb-4">❌ Error:</h2>
-              <p className="text-gray-700">{error}</p>
-            </div>
-          </div>
-        )}
-
         {/* Map View */}
-        {!error && googleMapsApiKey && isLoaded && (
+        {googleMapsApiKey && isLoaded && (
           <div className="relative w-full h-full">
             <RouteMap
               routes={routes}
@@ -426,7 +404,7 @@ export const CaseController: React.FC<CaseControllerProps> = ({
         )}
 
         {/* Map Loading State */}
-        {!error && googleMapsApiKey && !isLoaded && (
+        {googleMapsApiKey && !isLoaded && (
           <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
             <div className="text-lg text-gray-700">Loading map...</div>
           </div>
