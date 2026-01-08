@@ -24,11 +24,11 @@ const SCENARIOS: Record<ScenarioType, ScenarioConfig> = {
     name: 'Reduced Scenario',
     description: '8 cases across 2 agents',
     caseCount: 8,
-    agentPostcodes: ['W1A 1AA', 'SE14 5NP','SW1P 4DR'],
+    agentPostcodes: ["SE18 6AA", 'SE14 5NP',"SE1 0AA",],
     defaultStartTime: '10:30',
     defaultEndTime: '14:00',
     defaultLunchDuration: 45,
-    agentFinishPostcodes: ['EC1A 1BB', undefined, undefined],
+    agentFinishPostcodes: ["DA18 1AA", undefined, undefined],
   },
 };
 

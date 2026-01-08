@@ -1,5 +1,5 @@
 
-
+/*
 const LONDON_POSTCODES = [
 "WC2H 7BX","EC1M 5PW","E1 4QL","E2 6QA","E3 3HP","E3 5DP",
   "N1 7GU","N5 1NU","NW1 6XE","NW3 6HU","NW8 7NB","SE1 7QD","SE11 4BT","SE26 4HG","SW1W 9SU","W1C 2JL",
@@ -83,6 +83,20 @@ const LONDON_POSTCODES = [
   "SW12 9AA","SW13 0JP","SW15 3TN","SW16 6AB",
   "SW17 8QS","SW18 4DX","SW19 1HQ","SW20 9RF"
 ];
+*/
+
+const LONDON_POSTCODES = [
+  "SE1 7PB", "SE2 9QS", "SE3 0TJ", "SE4 1PX", 
+  "SE5 0EG", "SE6 4NW", "SE7 7AJ", "SE8 3BU", "SE9 1AA", 
+  "SE10 0AA", "SE11 5QY", "SE12 8RE", "SE13 5HY", "SE14 6NW", 
+  "SE15 1QD", "SE16 4DG", "SE17 1JL",  "SE19 2EZ", 
+  "SE20 8DA", "SE21 7AE", "SE22 8PT", "SE23 1AH", "SE24 0AA", 
+  "SE25 4AA", "SE26 4QA", "SE27 0AA", "SE28 0AA", "BR1 1AA", 
+  "BR1 3EF", "BR2 0EN", "BR2 9EF", "BR3 1AG", "BR4 0AA", 
+  "BR5 1AA", "BR6 0AA", "BR7 5AA", "DA1 1AA", "DA5 1AA", 
+  "DA6 7AA", "DA7 4AA", "DA8 1AA", "DA14 4AA", "DA15 7AA", 
+  "DA16 1AA", "DA17 5AA", "TN14 7AA", "TN16 3AA"
+]
 
 export interface PostcodeCase {
   postcode: string;
