@@ -14,65 +14,47 @@ export const TimeSlotInput: React.FC<TimeSlotInputProps> = ({
   onSlotChange,
 }) => {
   const [showInput, setShowInput] = useState(!!deliverySlot);
-  // Local state to track display values when no actual deliverySlot exists yet
-  const [localStartTime, setLocalStartTime] = useState('09:00');
-  const [localEndTime, setLocalEndTime] = useState('17:00');
   const timeOptions = generateTimeOptions();
-
-  // Check if a slot is the default (9am-5pm)
-  const isDefaultSlot = (slot: TimeSlot | undefined): boolean => {
-    return slot?.startTime === '09:00' && slot?.endTime === '17:00';
-  };
 
   const handleAddSlot = () => {
     setShowInput(true);
-    setLocalStartTime('09:00');
-    setLocalEndTime('17:00');
-    // Don't call onSlotChange yet - just show the UI with defaults
+    // Set default slot to 9am-5pm
+    onSlotChange(caseId, {
+      startTime: '09:00',
+      endTime: '17:00',
+    });
   };
 
   const handleRemoveSlot = () => {
     setShowInput(false);
-    setLocalStartTime('09:00');
-    setLocalEndTime('17:00');
     onSlotChange(caseId, undefined);
   };
 
   const handleStartTimeChange = (newStartTime: string) => {
-    setLocalStartTime(newStartTime);
-    const newSlot = {
-      startTime: newStartTime,
-      endTime: deliverySlot?.endTime || localEndTime,
-    };
-    
-    // Only register as a change if different from default
-    if (!isDefaultSlot(newSlot)) {
-      onSlotChange(caseId, newSlot);
-    } else {
-      // If it's the default slot, treat as undefined (no specific constraint)
-      onSlotChange(caseId, undefined);
+    if (deliverySlot) {
+      // Prevent start time from being >= end time
+      if (newStartTime >= deliverySlot.endTime) {
+        return;
+      }
+      onSlotChange(caseId, {
+        ...deliverySlot,
+        startTime: newStartTime,
+      });
     }
   };
 
   const handleEndTimeChange = (newEndTime: string) => {
-    setLocalEndTime(newEndTime);
-    const newSlot = {
-      startTime: deliverySlot?.startTime || localStartTime,
-      endTime: newEndTime,
-    };
-    
-    // Only register as a change if different from default
-    if (!isDefaultSlot(newSlot)) {
-      onSlotChange(caseId, newSlot);
-    } else {
-      // If it's the default slot, treat as undefined (no specific constraint)
-      onSlotChange(caseId, undefined);
+    if (deliverySlot) {
+      // Prevent end time from being <= start time
+      if (newEndTime <= deliverySlot.startTime) {
+        return;
+      }
+      onSlotChange(caseId, {
+        ...deliverySlot,
+        endTime: newEndTime,
+      });
     }
   };
-
-  // Display values: use deliverySlot if it exists, otherwise use local state
-  const displayStartTime = deliverySlot?.startTime || localStartTime;
-  const displayEndTime = deliverySlot?.endTime || localEndTime;
 
   if (!showInput) {
     return (
@@ -119,7 +101,7 @@ export const TimeSlotInput: React.FC<TimeSlotInputProps> = ({
       </div>
       <div className="flex items-center gap-2">
         <select
-          value={displayStartTime}
+          value={deliverySlot?.startTime}
           onChange={(e) => handleStartTimeChange(e.target.value)}
           className="flex-1 text-xs border border-gray-300 rounded px-2 py-1 bg-white cursor-pointer"
         >
@@ -131,7 +113,7 @@ export const TimeSlotInput: React.FC<TimeSlotInputProps> = ({
         </select>
         <div className="w-8 text-center text-xs text-gray-500">-</div>
         <select
-          value={displayEndTime}
+          value={deliverySlot?.endTime}
           onChange={(e) => handleEndTimeChange(e.target.value)}
           className="flex-1 text-xs border border-gray-300 rounded px-2 py-1 bg-white cursor-pointer"
         >
