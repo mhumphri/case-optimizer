@@ -85,9 +85,7 @@ export const ChangesPanel: React.FC<ChangesPanelProps> = ({
             className={`px-3 py-1 text-xs font-medium rounded cursor-pointer ${
               isRecalculating 
                 ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-300'
-                : isExpanded
-                  ? 'bg-transparent text-gray-500 border border-blue-500 hover:bg-gray-50'
-                  : 'bg-blue-500 text-white border-none hover:bg-blue-600'
+                : 'bg-blue-500 text-white border-none hover:bg-blue-600'
             }`}
           >
             {isExpanded ? 'Hide Changes' : 'View Changes'}

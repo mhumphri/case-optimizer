@@ -155,6 +155,14 @@ export const CaseController: React.FC<CaseControllerProps> = ({
     }
   }, [routesVersion, isMobile]);
 
+  // Switch to map view when routes are recalculated in mobile
+  useEffect(() => {
+    if (isMobile && routesVersion > 0) {
+      setActiveView('map');
+      setChangesExpanded(false);
+    }
+  }, [routesVersion, isMobile]);
+
   // Mobile View
   if (isMobile) {
     return (

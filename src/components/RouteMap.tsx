@@ -512,7 +512,7 @@ export const RouteMap: React.FC<RouteMapProps> = ({
                   onCloseClick={() => setSelectedMarker(null)}
                 >
                   <div>
-                    <div>{route.vehicleLabel}</div>
+                    <div>{route.vehicleLabel.split(' (')[0]}</div>
                     <div>
                       Case {visitIndex + 1}: {visit.shipmentLabel}
                     </div>

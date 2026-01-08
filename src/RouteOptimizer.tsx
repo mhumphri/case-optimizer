@@ -5,6 +5,7 @@ import type { Location, OptimizedRoute, CaseData, CasePriority, CaseChange, Time
 import { Header } from './components/Header';
 import { LandingPage } from './components/LandingPage';
 import { CaseController } from './components/CaseController';
+import { CompletionModal } from './components/CompletionModal';
 
 // Scenario Definitions
 const SCENARIOS: Record<ScenarioType, ScenarioConfig> = {
@@ -44,6 +45,14 @@ const RouteOptimizer: React.FC = () => {
   const [routesVersion, setRoutesVersion] = useState(0);
   const [optimizedAgentSettings, setOptimizedAgentSettings] = useState<AgentSettings[]>([]);
   const [isMobile, setIsMobile] = useState(false);
+  const [showCompletionModal, setShowCompletionModal] = useState(false);
+  const [completionSummary, setCompletionSummary] = useState({
+    activeAgents: 0,
+    totalCases: 0,
+    allocatedCases: 0,
+    unallocatedCases: 0,
+    timeWindow: { start: '09:00', end: '17:00' },
+  });
 
   // Store original case data and agent settings for change tracking
   const originalCaseData = useRef<Map<string, { priority: CasePriority; deliverySlot?: TimeSlot }>>(new Map());
@@ -242,6 +251,27 @@ const RouteOptimizer: React.FC = () => {
     });
 
     setAgentChanges(prev => prev.filter(change => change.agentIndex !== agentIndex));
+  };
+
+  const handleReset = () => {
+    // Reset all state
+    setOptimizedRoutes([]);
+    setCases([]);
+    setCaseChanges([]);
+    setAgentSettings([]);
+    setAgentChanges([]);
+    setAgentLocations([]);
+    setUnallocatedCases([]);
+    setRoutesVersion(0);
+    setOptimizedAgentSettings([]);
+    setSelectedScenario(null);
+    setError('');
+    setShowCompletionModal(false);
+    
+    // Clear refs
+    originalCaseData.current = new Map();
+    originalAgentSettings.current = [];
+    currentScenarioConfig.current = null;
   };
 
   const handleRecalculate = async () => {
@@ -534,7 +564,7 @@ const RouteOptimizer: React.FC = () => {
 
       //http://localhost:3001/api/optimize-routes
       //https://applied-plexus-360100.nw.r.appspot.com/api/optimize-routes
-      const response = await fetch('https://applied-plexus-360100.nw.r.appspot.com/api/optimize-routes', {
+      const response = await fetch('http://localhost:3001/api/optimize-routes', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -628,6 +658,31 @@ const RouteOptimizer: React.FC = () => {
       );
       
       originalAgentSettings.current = currentAgentSettings.map(s => ({ ...s }));
+
+      // Calculate summary statistics for modal
+      const activeAgentCount = currentAgentSettings.filter(s => s.active).length;
+      const allocatedCount = updatedCases.filter(c => c.assignedAgentIndex !== null).length;
+      const unallocatedCount = updatedCases.filter(c => c.assignedAgentIndex === null).length;
+      
+      // Get time window from agent settings (use the most common time window)
+      const activeSettings = currentAgentSettings.filter(s => s.active);
+      const timeWindow = activeSettings.length > 0
+        ? {
+            start: activeSettings[0].startTime,
+            end: activeSettings[0].endTime,
+          }
+        : { start: scenario.defaultStartTime, end: scenario.defaultEndTime };
+
+      setCompletionSummary({
+        activeAgents: activeAgentCount,
+        totalCases: updatedCases.length,
+        allocatedCases: allocatedCount,
+        unallocatedCases: unallocatedCount,
+        timeWindow,
+      });
+
+      // Show completion modal
+      setShowCompletionModal(true);
     } catch (err) {
       console.error('❌ Error:', err);
       setError(err instanceof Error ? err.message : 'An error occurred');
@@ -651,7 +706,7 @@ const RouteOptimizer: React.FC = () => {
   if (isMobile) {
     return (
       <div className="flex flex-col h-screen bg-gray-50">
-        <Header />
+        <Header onReset={handleReset} showReset={optimizedRoutes.length > 0} />
         
         {optimizedRoutes.length === 0 && !loading && (
           <LandingPage onScenarioSelect={handleScenarioSelect} />
@@ -706,6 +761,16 @@ const RouteOptimizer: React.FC = () => {
             isMobile={true}
           />
         )}
+
+        <CompletionModal
+          isOpen={showCompletionModal}
+          onClose={() => setShowCompletionModal(false)}
+          activeAgents={completionSummary.activeAgents}
+          totalCases={completionSummary.totalCases}
+          allocatedCases={completionSummary.allocatedCases}
+          unallocatedCases={completionSummary.unallocatedCases}
+          timeWindow={completionSummary.timeWindow}
+        />
       </div>
     );
   }
@@ -713,7 +778,7 @@ const RouteOptimizer: React.FC = () => {
   // DESKTOP VIEW - Existing full interface
   return (
     <div className="flex flex-col h-screen bg-gray-50">
-      <Header />
+      <Header onReset={handleReset} showReset={optimizedRoutes.length > 0} />
 
       {/* Landing Page */}
       {optimizedRoutes.length === 0 && !loading && (
@@ -762,6 +827,16 @@ const RouteOptimizer: React.FC = () => {
           isMobile={false}
         />
       )}
+
+      <CompletionModal
+        isOpen={showCompletionModal}
+        onClose={() => setShowCompletionModal(false)}
+        activeAgents={completionSummary.activeAgents}
+        totalCases={completionSummary.totalCases}
+        allocatedCases={completionSummary.allocatedCases}
+        unallocatedCases={completionSummary.unallocatedCases}
+        timeWindow={completionSummary.timeWindow}
+      />
     </div>
   );
 };
