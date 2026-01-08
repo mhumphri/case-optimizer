@@ -17,7 +17,7 @@ export const Header: React.FC<HeaderProps> = ({ onReset, showReset = false }) =>
             className="h-[40px] w-auto shrink-0"
           />
           <h1 className="m-0 text-2xl font-semibold text-gray-800 truncate">
-            Case Manager v1
+            Case Manager v2
           </h1>
         </div>
         {showReset && (
