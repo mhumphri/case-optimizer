@@ -161,6 +161,22 @@ export const CaseController: React.FC<CaseControllerProps> = ({
     }
   }, [routesVersion, isMobile]);
 
+  // Calculate unallocated cases (for both mobile and desktop views)
+  const unallocatedCasesWithNumbers = React.useMemo(() => {
+    const unallocated = cases.filter(c => c.assignedAgentIndex === null);
+    unallocated.sort((a, b) => a.id.localeCompare(b.id));
+    
+    return unallocated.map((caseData, index) => ({
+      ...caseData,
+      unallocatedNumber: index + 1,
+    }));
+  }, [cases]);
+
+  // Update parent with unallocated cases whenever they change
+  useEffect(() => {
+    onUnallocatedCasesUpdate(unallocatedCasesWithNumbers);
+  }, [unallocatedCasesWithNumbers, onUnallocatedCasesUpdate]);
+
   // Mobile View
   if (isMobile) {
     return (
@@ -195,7 +211,7 @@ export const CaseController: React.FC<CaseControllerProps> = ({
           )}
 
           {/* Map Loading State */}
-          {!error && googleMapsApiKey && !isLoaded && (
+          {googleMapsApiKey && !isLoaded && (
             <div className="absolute inset-0 flex items-center justify-center bg-gray-100">
               <div className="text-sm text-gray-700">Loading map...</div>
             </div>

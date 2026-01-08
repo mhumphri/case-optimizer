@@ -13,7 +13,7 @@ export const generateCasePriority = (): CasePriority => {
   const random = Math.random();
   
   // 1 in 6 cases are high priority
-  if (random < 1/3) {
+  if (random < 1/4) {
     return 'high';
   } else {
     return 'normal';

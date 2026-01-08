@@ -14,11 +14,11 @@ import type { CasePriority } from '../types/route';
 export const getPenaltyCost = (priority: CasePriority): number => {
   switch (priority) {
     case 'high':
-      return 500; // High cost to skip high-priority cases
+      return 10000; // High cost to skip high-priority cases
     case 'normal':
-      return 100; // Baseline cost for normal cases
+      return 5000; // Baseline cost for normal cases
     default:
-      return 100;
+      return 5000;
   }
 };
 

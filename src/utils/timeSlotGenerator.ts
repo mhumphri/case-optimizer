@@ -2,38 +2,34 @@
 import type { TimeSlot } from '../types/route';
 
 /**
- * Generate a random time in HH:mm format with 15-minute increments between 9am-5pm
+ * Generate a random time in HH:mm format with 15-minute increments
+ * Constrained to 10:30-12:15 for delivery slots (to allow 15-min window ending at 12:30)
  */
-const generateRandomTimeIncrements = (): string => {
-  // Generate hours between 9-16 (9am-4:45pm to allow for 15-min window)
-  const minHour = 9;
-  const maxHour = 16; // Up to 4:45pm so end time can be 5pm
-  const hours = minHour + Math.floor(Math.random() * (maxHour - minHour + 1));
+const generateRandomDeliveryTime = (): string => {
+  // Possible start times: 10:30, 10:45, 11:00, 11:15, 11:30, 11:45, 12:00, 12:15
+  const possibleTimes = [
+    '10:30', '10:45', 
+    '11:00', '11:15', '11:30', '11:45',
+    '12:00', '12:15'
+  ];
   
-  // Generate minutes in 15-minute increments (0, 15, 30, 45)
-  const minutes = Math.floor(Math.random() * 4) * 15;
-  
-  // Make sure we don't go past 4:45pm
-  if (hours === 16 && minutes === 45) {
-    // If we hit 4:45pm, ensure end time won't exceed 5pm
-    return '16:30'; // Return 4:30pm instead
-  }
-  
-  return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+  // Randomly select one of the possible times
+  const randomIndex = Math.floor(Math.random() * possibleTimes.length);
+  return possibleTimes[randomIndex];
 };
 
 /**
- * Generate a random delivery time slot (15-minute window) between 9am-5pm
- * Returns undefined for cases that don't need a slot (11 out of 12)
+ * Generate a random delivery time slot (15-minute window) between 10:30am-12:30pm
+ * Returns undefined for cases that don't need a slot (4 out of 5)
  */
 export const generateDeliverySlot = (): TimeSlot | undefined => {
-  // 1 in 12 cases should have a delivery slot
-  if (Math.random() > 1/3) {
+  // 1 in 5 cases should have a delivery slot
+  if (Math.random() > 1/5) {
     return undefined;
   }
   
-  // Generate a random start time between 9am-4:45pm
-  const startTime = generateRandomTimeIncrements();
+  // Generate a random start time between 10:30-12:15
+  const startTime = generateRandomDeliveryTime();
   
   // End time is 15 minutes after start time
   const [startHours, startMinutes] = startTime.split(':').map(Number);

@@ -85,6 +85,13 @@ const LONDON_POSTCODES = [
 ];
 */
 
+const LONDON_POSTCODES = ["SE23 3PQ", "DA14 4AA", "SE3 0TJ", "SE10 0AA", "SE16 4DG", "SE24 0AA", "SE22 8PT", "SE20 8DA", "SE23 1JB", "SE4 2RR", "SE23 1JP", "SE1 7PB", "SE2 9QS", "SE3 0TJ", "SE4 1PX", 
+  "SE5 0EG", "SE6 4NW", "SE7 7AJ", "SE8 3BU", "SE9 1AA", 
+  "SE10 0AA", "SE11 5QY", "SE12 8RE", "SE13 5HY", "SE14 6NW", 
+ "SE16 4DG", "SE17 1JL",  "SE19 2EZ", 
+  "SE20 8DA", "SE21 7AE", "SE22 8PT", "SE23 1AH", "SE24 0AA" ]
+
+  /*
 const LONDON_POSTCODES = [
   "SE1 7PB", "SE2 9QS", "SE3 0TJ", "SE4 1PX", 
   "SE5 0EG", "SE6 4NW", "SE7 7AJ", "SE8 3BU", "SE9 1AA", 
@@ -97,6 +104,7 @@ const LONDON_POSTCODES = [
   "DA6 7AA", "DA7 4AA", "DA8 1AA", "DA14 4AA", "DA15 7AA", 
   "DA16 1AA", "DA17 5AA", "TN14 7AA", "TN16 3AA"
 ]
+  */
 
 export interface PostcodeCase {
   postcode: string;

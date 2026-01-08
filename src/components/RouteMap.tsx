@@ -354,11 +354,20 @@ export const RouteMap: React.FC<RouteMapProps> = ({
               onCloseClick={() => setSelectedMarker(null)}
             >
               <div>
-                <div>Unallocated Case</div>
+                <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>
+                  Unallocated Case
+                </div>
                 <div>
                   Case {caseData.unallocatedNumber}: {caseData.postcode}
                 </div>
                 <div>Priority: {displayPriority.toUpperCase()}</div>
+                {(() => {
+                  const originalData = originalCasePriorities.get(caseData.id);
+                  const deliverySlot = originalData?.deliverySlot;
+                  return deliverySlot ? (
+                    <div>Time Slot: {deliverySlot.startTime}-{deliverySlot.endTime}</div>
+                  ) : null;
+                })()}
               </div>
             </InfoWindow>
           )}
@@ -516,13 +525,24 @@ export const RouteMap: React.FC<RouteMapProps> = ({
                   onCloseClick={() => setSelectedMarker(null)}
                 >
                   <div>
-                    <div>{route.vehicleLabel.split(' (')[0]}</div>
+                    <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>
+                      {route.vehicleLabel.split(' (')[0]}
+                    </div>
                     <div>
                       Case {visitIndex + 1}: {visit.shipmentLabel}
                     </div>
                     {formatTime(visit.startTime) && (
                       <div>Arrival: {formatTime(visit.startTime)}</div>
                     )}
+                    <div>Priority: {getCasePriority(visit.shipmentLabel).toUpperCase()}</div>
+                    {(() => {
+                      const caseData = cases.find(c => c.postcode === visit.shipmentLabel);
+                      const originalData = originalCasePriorities.get(caseData?.id || '');
+                      const deliverySlot = originalData?.deliverySlot;
+                      return deliverySlot ? (
+                        <div>Time Slot: {deliverySlot.startTime}-{deliverySlot.endTime}</div>
+                      ) : null;
+                    })()}
                   </div>
                 </InfoWindow>
               )}
