@@ -294,6 +294,34 @@ const RouteOptimizer: React.FC = () => {
     optimizeRoutes(undefined, undefined, scenarioType);
   };
 
+  // Helper function to reset state to last successful optimization
+  const resetToLastSuccessfulState = () => {
+    console.log('🔄 Resetting to previous state...');
+    
+    // Restore cases to their original values
+    const restoredCases = cases.map(caseData => {
+      const original = originalCaseData.current.get(caseData.id);
+      if (original) {
+        return {
+          ...caseData,
+          priority: original.priority,
+          deliverySlot: original.deliverySlot,
+        };
+      }
+      return caseData;
+    });
+    setCases(restoredCases);
+    
+    // Restore agent settings to their original values
+    setAgentSettings(originalAgentSettings.current.map(s => ({ ...s })));
+    
+    // Clear all pending changes
+    setCaseChanges([]);
+    setAgentChanges([]);
+    
+    console.log('✅ State restored to last successful optimization');
+  };
+
   const optimizeRoutes = async (
     existingCases?: CaseData[],
     existingAgentSettings?: AgentSettings[],
@@ -316,6 +344,7 @@ const RouteOptimizer: React.FC = () => {
     const activeAgentsCount = settingsToCheck.filter(s => s.active).length;
     if (activeAgentsCount === 0 && existingCases) {
       setToastMessage('Please activate at least one agent before recalculating routes');
+      resetToLastSuccessfulState();
       setLoading(false);
       return;
     }
@@ -501,6 +530,12 @@ const RouteOptimizer: React.FC = () => {
     
     if (casesWithCoords.length === 0) {
       setToastMessage('Error: No cases could be geocoded. Cannot proceed with optimization.');
+      
+      // Reset to previous state if this was a recalculation
+      if (existingCases && existingCases.length > 0) {
+        resetToLastSuccessfulState();
+      }
+      
       setLoading(false);
       return;
     }
@@ -648,7 +683,7 @@ const RouteOptimizer: React.FC = () => {
 
       //http://localhost:3001/api/optimize-routes
       //https://applied-plexus-360100.nw.r.appspot.com/api/optimize-routes
-      const response = await fetch('https://applied-plexus-360100.nw.r.appspot.com/zzzz', {
+      const response = await fetch('https://applied-plexus-360100.nw.r.appspot.com/api/zzz', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -770,6 +805,11 @@ const RouteOptimizer: React.FC = () => {
     } catch (err) {
       console.error('❌ Error:', err);
       setToastMessage(err instanceof Error ? err.message : 'An error occurred during optimization');
+      
+      // If this was a recalculation (not initial load), reset to previous state
+      if (existingCases && existingCases.length > 0) {
+        resetToLastSuccessfulState();
+      }
     } finally {
       setLoading(false);
     }
