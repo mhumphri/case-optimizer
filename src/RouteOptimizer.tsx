@@ -10,19 +10,9 @@ import { Toast } from './components/Toast';
 
 // Scenario Definitions
 const SCENARIOS: Record<ScenarioType, ScenarioConfig> = {
-  full: {
-    name: 'Full Scenario',
-    description: '200 cases across 6 agents',
-    caseCount: 200,
-    agentPostcodes: ['W6 9LI', 'W2 3EL', 'SE12 4WH', 'E10 1PI', 'SE14 5NP', 'SW15 7GB'],
-    defaultStartTime: '09:00',
-    defaultEndTime: '17:00',
-    defaultLunchDuration: 45,
-    agentFinishPostcodes: ['SW1A 1AA', undefined, undefined, undefined, undefined, undefined],
-  },
   reduced: {
-    name: 'Reduced Scenario',
-    description: '8 cases across 2 agents',
+    name: 'Test Scenario',
+    description: '8 cases across 3 agents',
     caseCount: 8,
     agentPostcodes: ['W1A 1AA', 'SE14 5NP','SW1P 4DR'],
     defaultStartTime: '10:30',
@@ -857,9 +847,7 @@ if (!response.ok) {
               <div className="text-4xl mb-4">⏳</div>
               <h2 className="text-xl font-bold text-gray-900 mb-2">Geocoding & Optimizing...</h2>
               <p className="text-gray-600 text-sm">
-                {selectedScenario === 'full'
-                  ? 'Processing 200 cases across 6 agents'
-                  : 'Processing 8 cases across 2 agents'}
+                Processing 8 cases across 3 agents
               </p>
             </div>
           </div>
@@ -929,9 +917,7 @@ if (!response.ok) {
             <div className="text-4xl mb-4">⏳</div>
             <h2 className="text-xl font-bold text-gray-900 mb-2">Geocoding & Optimizing...</h2>
             <p className="text-gray-600">
-              {selectedScenario === 'full'
-                ? 'Processing 200 cases across 6 agents'
-                : 'Processing 8 cases across 2 agents'}
+              Processing 8 cases across 3 agents
             </p>
           </div>
         </div>

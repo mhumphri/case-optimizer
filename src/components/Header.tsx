@@ -10,7 +10,18 @@ export const Header: React.FC<HeaderProps> = ({ onReset, showReset = false }) =>
     <>
       {/* Header with Logo and Title */}
       <div className="flex items-center justify-between px-5 py-4 shrink-0">
-        <div className="flex items-center gap-2 min-w-0 flex-1">
+        <div 
+          className={`flex items-center gap-2 min-w-0 flex-1 ${showReset ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''}`}
+          onClick={showReset ? onReset : undefined}
+          role={showReset ? "button" : undefined}
+          tabIndex={showReset ? 0 : undefined}
+          onKeyDown={showReset ? (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              onReset?.();
+            }
+          } : undefined}
+        >
           <img 
             src="/A2BLogo.png" 
             alt="A2B Logo" 
