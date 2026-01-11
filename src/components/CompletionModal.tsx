@@ -43,35 +43,29 @@ export const CompletionModal: React.FC<CompletionModalProps> = ({
 
         {/* Scrollable Content */}
         <div className="px-6 overflow-y-auto flex-1">
-          <div className="space-y-0 pb-4">
-            {/* Active Agents */}
-            <div className="flex items-center justify-between p-3 rounded-lg">
-              <span className="font-medium text-gray-700">Active Agents</span>
-              <span className="text-gray-900">{activeAgents}</span>
-            </div>
-
+          <div className="space-y-0">
             {/* Total Cases */}
-            <div className="flex items-center justify-between p-3 rounded-lg">
+            <div className="flex items-center justify-between p-3 py-2 rounded-lg">
               <span className="font-medium text-gray-700">Total Cases</span>
               <span className="text-gray-900">{totalCases}</span>
             </div>
 
             {/* Allocated Cases */}
-            <div className="flex items-center justify-between p-3 rounded-lg">
+            <div className="flex items-center justify-between p-3 py-2 rounded-lg">
               <span className="font-medium text-gray-700">Allocated Cases</span>
               <span className="text-gray-900">{allocatedCases}</span>
             </div>
 
             {/* Unallocated Cases */}
-            {unallocatedCases > 0 && (
-              <div className="flex items-center justify-between p-3 rounded-lg">
+
+              <div className="flex items-center justify-between p-3 py-2 rounded-lg">
                 <span className="font-medium text-gray-700">Unallocated Cases</span>
                 <span className="text-gray-900">{unallocatedCases}</span>
               </div>
-            )}
+
 
             {/* Time Window */}
-            <div className="flex items-center justify-between p-3 rounded-lg">
+            <div className="flex items-center justify-between p-3 py-2 rounded-lg">
               <span className="font-medium text-gray-700">Time Window</span>
               <span className="text-gray-900">
                 {timeWindow.start} - {timeWindow.end}
@@ -81,7 +75,7 @@ export const CompletionModal: React.FC<CompletionModalProps> = ({
         </div>
 
         {/* Close Button - Fixed at bottom */}
-        <div className="p-6 pt-4">
+        <div className="p-6 pt-4 pb-4">
           <button
             onClick={onClose}
             className="w-full px-4 py-3 bg-blue-500 text-white font-semibold rounded-lg hover:bg-blue-600 transition-colors"
