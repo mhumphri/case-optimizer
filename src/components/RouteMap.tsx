@@ -171,14 +171,18 @@ export const RouteMap: React.FC<RouteMapProps> = ({
         const defaultLocation = agentLocations[index];
         const startLocation = settings?.startLocation || defaultLocation;
         
-        if (startLocation) {
+        // Only include start location if agent is active and has assigned cases
+        if (startLocation && settings?.active && route.visits.length > 0) {
           bounds.extend({ lat: startLocation.latitude, lng: startLocation.longitude });
           hasPoints = true;
         }
       });
 
-      agentSettings.forEach(settings => {
-        if (settings.finishLocation) {
+      agentSettings.forEach((settings, index) => {
+        const route = routes[index];
+        
+        // Only include finish location if agent is active, has finish location, and has assigned cases
+        if (settings.finishLocation && settings.active && route && route.visits.length > 0) {
           bounds.extend({ 
             lat: settings.finishLocation.latitude, 
             lng: settings.finishLocation.longitude 
@@ -399,8 +403,8 @@ export const RouteMap: React.FC<RouteMapProps> = ({
         const settings = agentSettings[index];
         const defaultLocation = agentLocations[index];
         
-        // Only render marker if agent is active
-        if (!settings?.active) return null;
+        // Only render marker if agent is active and has assigned cases
+        if (!settings?.active || route.visits.length === 0) return null;
         
         // ✅ Use custom start location from settings if available, otherwise use default
         const startLocation = settings?.startLocation || defaultLocation;
@@ -423,8 +427,10 @@ export const RouteMap: React.FC<RouteMapProps> = ({
 
       {/* Agent Finish Markers */}
       {agentSettings.map((settings, index) => {
-        // Only render marker if agent is active and has a finish location
-        if (!settings.active || !settings.finishLocation) return null;
+        const route = routes[index];
+        
+        // Only render marker if agent is active, has a finish location, and has assigned cases
+        if (!settings.active || !settings.finishLocation || !route || route.visits.length === 0) return null;
         
         const color = ROUTE_COLORS[index % ROUTE_COLORS.length];
         return (
