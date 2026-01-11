@@ -683,18 +683,33 @@ const RouteOptimizer: React.FC = () => {
 
       //http://localhost:3001/api/optimize-routes
       //https://applied-plexus-360100.nw.r.appspot.com/api/optimize-routes
-      const response = await fetch('https://applied-plexus-360100.nw.r.appspot.com/api/optimize-routes', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-      });
+const response = await fetch('https://applied-plexus-360100.nw.r.appspot.com/api/optimize-routes2', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify(requestBody),
+});
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.details || `HTTP error! status: ${response.status}`);
-      }
+if (!response.ok) {
+  const errorData = await response.json();
+  
+  // Handle rate limit error (429)
+  if (response.status === 429) {
+    const resetInfo = errorData.resetsIn 
+      ? ` Resets in ${errorData.resetsIn}.`
+      : errorData.resetTime 
+        ? ` Try again after ${new Date(errorData.resetTime).toLocaleString()}.`
+        : '';
+    
+    throw new Error(
+      `${errorData.message || 'Daily API limit reached'}${resetInfo}`
+    );
+  }
+  
+  // Handle other errors
+  throw new Error(errorData.details || errorData.message || `HTTP error! status: ${response.status}`);
+}
 
       const data = await response.json();
       console.log('✅ API Response:', data);

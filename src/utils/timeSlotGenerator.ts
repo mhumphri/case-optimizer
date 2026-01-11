@@ -8,7 +8,7 @@ import type { TimeSlot } from '../types/route';
 const generateRandomDeliveryTime = (): string => {
   // Possible start times: 10:30, 10:45, 11:00, 11:15, 11:30, 11:45, 12:00, 12:15
   const possibleTimes = [
-    '10:30', '10:45', 
+     
     '11:00', '11:15', '11:30', '11:45',
     '12:00', '12:15'
   ];
